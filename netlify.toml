@@ -1,0 +1,16 @@
+# Netlify deploy config for the Thridhavarnam admin panel.
+# Bakes the Render backend URL into the build and rewrites all routes to
+# index.html so client-side (React Router) navigation works on refresh.
+
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+[build.environment]
+  VITE_API_URL = "https://api.thridhavarnam.com/api"
+  NODE_VERSION = "20"
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
