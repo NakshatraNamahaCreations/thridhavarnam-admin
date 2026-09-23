@@ -54,40 +54,58 @@ export const api = {
 export const auth = {
   login: (email, password) => api.post('/auth/login', { email, password }),
   me: () => api.get('/auth/me'),
+  updateMe: (patch) => api.patch('/auth/me', patch),
 }
+// Ids that contain characters HTTP treats as special — like `#` (which
+// browsers strip as a URL fragment) or `/` — silently break path
+// building. Every id-bearing URL below runs through encodeURIComponent
+// so those characters survive the round-trip to the server.
+const enc = (id) => encodeURIComponent(id)
+
 export const products = {
   list: () => api.get('/products'),
   create: (d) => api.post('/products', d),
   bulk: (items) => api.post('/products/bulk', { items }),
-  update: (id, d) => api.put(`/products/${id}`, d),
-  restock: (id, qty) => api.patch(`/products/${id}/restock`, { qty }),
-  remove: (id) => api.del(`/products/${id}`),
+  update: (id, d) => api.put(`/products/${enc(id)}`, d),
+  restock: (id, qty) => api.patch(`/products/${enc(id)}/restock`, { qty }),
+  remove: (id) => api.del(`/products/${enc(id)}`),
 }
 export const customers = {
   list: () => api.get('/customers'),
   create: (d) => api.post('/customers', d),
-  update: (id, d) => api.put(`/customers/${id}`, d),
-  remove: (id) => api.del(`/customers/${id}`),
+  update: (id, d) => api.put(`/customers/${enc(id)}`, d),
+  remove: (id) => api.del(`/customers/${enc(id)}`),
 }
 
 export const enquiries = {
   list: () => api.get('/enquiries'),
   create: (d) => api.post('/enquiries', d),
-  update: (id, d) => api.put(`/enquiries/${id}`, d),
-  remove: (id) => api.del(`/enquiries/${id}`),
+  update: (id, d) => api.put(`/enquiries/${enc(id)}`, d),
+  remove: (id) => api.del(`/enquiries/${enc(id)}`),
 }
 
 export const categories = {
   list: () => api.get('/categories'),
   create: (d) => api.post('/categories', d),
-  update: (id, d) => api.put(`/categories/${id}`, d),
-  remove: (id) => api.del(`/categories/${id}`),
+  update: (id, d) => api.put(`/categories/${enc(id)}`, d),
+  remove: (id) => api.del(`/categories/${enc(id)}`),
 }
 export const occasions = {
   list: () => api.get('/occasions'),
   create: (d) => api.post('/occasions', d),
-  update: (id, d) => api.put(`/occasions/${id}`, d),
-  remove: (id) => api.del(`/occasions/${id}`),
+  update: (id, d) => api.put(`/occasions/${enc(id)}`, d),
+  remove: (id) => api.del(`/occasions/${enc(id)}`),
+}
+export const stories = {
+  list: () => api.get('/stories'),
+  get: (id) => api.get(`/stories/${enc(id)}`),
+  create: (d) => api.post('/stories', d),
+  update: (id, d) => api.put(`/stories/${enc(id)}`, d),
+  remove: (id) => api.del(`/stories/${enc(id)}`),
+}
+export const reviews = {
+  list: (productId) => api.get(productId ? `/reviews?productId=${enc(productId)}` : '/reviews'),
+  remove: (id) => api.del(`/reviews/${enc(id)}`),
 }
 export const colorways = {
   list: () => api.get('/colorways'),
@@ -95,21 +113,18 @@ export const colorways = {
 export const coupons = {
   list: () => api.get('/coupons'),
   create: (d) => api.post('/coupons', d),
-  update: (id, d) => api.put(`/coupons/${id}`, d),
-  remove: (id) => api.del(`/coupons/${id}`),
+  update: (id, d) => api.put(`/coupons/${enc(id)}`, d),
+  remove: (id) => api.del(`/coupons/${enc(id)}`),
 }
 export const orders = {
   list: () => api.get('/orders'),
   create: (d) => api.post('/orders', d),
-  update: (id, d) => api.put(`/orders/${id}`, d),
-  remove: (id) => api.del(`/orders/${id}`),
+  update: (id, d) => api.put(`/orders/${enc(id)}`, d),
+  remove: (id) => api.del(`/orders/${enc(id)}`),
 }
 export const payments = {
   list: () => api.get('/payments'),
   record: (d) => api.post('/payments', d),
-  markPaid: (id) => api.patch(`/payments/${id}/paid`),
-  refund: (id) => api.patch(`/payments/${id}/refund`),
-}
-export const admin = {
-  reset: () => api.post('/admin/reset'),
+  markPaid: (id) => api.patch(`/payments/${enc(id)}/paid`),
+  refund: (id) => api.patch(`/payments/${enc(id)}/refund`),
 }

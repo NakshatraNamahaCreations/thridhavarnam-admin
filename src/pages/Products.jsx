@@ -1,4 +1,5 @@
 import { useEffect, useState, useMemo } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { products as api, categories as catApi, occasions as occApi, colorways as colorApi } from '../api/client'
 import { inr, productStatusClass, productStatusLabel } from '../lib/format'
 import { isImageSrc, uploadImage } from '../lib/image'
@@ -54,6 +55,7 @@ export default function Products() {
   const [saving, setSaving] = useState(false)
   const [confirm, setConfirm] = useState(null)
   const [page, setPage] = useState(1)
+  const [searchParams, setSearchParams] = useSearchParams()
 
   const load = () => api.list().then(setRows).catch((e) => toast.bad(e.message))
   useEffect(() => {
@@ -63,6 +65,16 @@ export default function Products() {
     colorApi.list().then(setColorList).catch(() => {})
   }, [])
   useEffect(() => { setPage(1) }, [q, catFilter])
+
+  useEffect(() => {
+    if (searchParams.get('new') === '1') {
+      setForm(EMPTY)
+      setEditing({})
+      const next = new URLSearchParams(searchParams)
+      next.delete('new')
+      setSearchParams(next, { replace: true })
+    }
+  }, [searchParams, setSearchParams])
 
   const filtered = useMemo(() => {
     if (!rows) return []

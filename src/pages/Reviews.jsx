@@ -1,65 +1,99 @@
 import { useEffect, useState, useMemo } from 'react'
-import { products as productsApi, orders as ordersApi } from '../api/client'
+import { reviews as api, products as productsApi } from '../api/client'
+import { useToast } from '../context/ToastContext'
+import ConfirmDialog from '../components/ConfirmDialog'
 import Pagination from '../components/Pagination'
-import { IconStar, IconThumbsUp, IconReply } from '../components/icons'
+import { IconStar, IconTrash } from '../components/icons'
 
 const PAGE = 6
-
-const TEXTS = [
-  'Absolutely stunning! The zari work is exquisite and the colour is exactly as shown. Worth every rupee.',
-  "Wore this for my sister's wedding and received so many compliments. The fabric quality is premium.",
-  'Beautiful drape and rich colour. Delivery was quick and the packaging was elegant.',
-  'Lovely saree, the craftsmanship is top-notch. Will definitely shop here again.',
-  'Gorgeous piece — looks even better in person. Highly recommend to everyone.',
-  'Elegant and comfortable to wear all day. The border detailing is beautiful.',
-]
 
 function Stars({ n, size = 14 }) {
   return (
     <span className="stars">
       {Array.from({ length: 5 }).map((_, i) => (
-        <IconStar key={i} size={size} fill={i < Math.round(n) ? '#d4af37' : 'none'} style={{ color: i < Math.round(n) ? '#d4af37' : '#c4c5cd' }} />
+        <IconStar
+          key={i}
+          size={size}
+          fill={i < Math.round(n) ? '#d4af37' : 'none'}
+          style={{ color: i < Math.round(n) ? '#d4af37' : '#c4c5cd' }}
+        />
       ))}
     </span>
   )
 }
 
+// First-two-initials avatar from a display name. Falls back to '·' when
+// the name is missing so the avatar circle is never empty.
+function initials(name) {
+  if (!name) return '·'
+  return name
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((p) => p[0])
+    .join('')
+    .toUpperCase()
+}
+
+function formatDate(iso) {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return ''
+  return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
+}
+
 export default function Reviews() {
-  const [data, setData] = useState(null)
+  const toast = useToast()
+  const [rows, setRows] = useState(null)
+  const [productNameById, setProductNameById] = useState({})
   const [page, setPage] = useState(1)
+  const [confirm, setConfirm] = useState(null)
+  const [busy, setBusy] = useState(false)
+
+  const load = () => api.list().then(setRows).catch((e) => toast.bad(e.message))
 
   useEffect(() => {
-    Promise.all([productsApi.list(), ordersApi.list()])
-      .then(([products, orders]) => setData({ products, orders }))
+    load()
+    // Product names so we can show them alongside each review — the
+    // review record only carries productId.
+    productsApi
+      .list()
+      .then((ps) => {
+        const map = {}
+        ps.forEach((p) => { map[p.id] = p.name || p.id })
+        setProductNameById(map)
+      })
       .catch(() => {})
   }, [])
 
-  const s = useMemo(() => {
-    if (!data) return null
-    const { products, orders } = data
-    const byName = Object.fromEntries(products.map((p) => [p.name, p]))
-    const reviews = orders.map((o, i) => {
-      const prod = byName[o.product]
-      const rating = prod ? Math.round(prod.rating || 5) : 5 - (i % 2)
-      return {
-        id: o.id,
-        name: o.customer,
-        avatar: o.avatar,
-        product: o.product,
-        rating,
-        date: o.date,
-        text: TEXTS[i % TEXTS.length],
-        helpful: 8 + ((i * 7) % 22),
-      }
-    })
-    const breakdown = [5, 4, 3, 2, 1].map((star) => ({ star, count: reviews.filter((r) => r.rating === star).length }))
-    const total = reviews.length || 1
-    const avg = reviews.reduce((a, r) => a + r.rating, 0) / total
+  const stats = useMemo(() => {
+    if (!rows) return null
+    const breakdown = [5, 4, 3, 2, 1].map((star) => ({
+      star,
+      count: rows.filter((r) => Math.round(r.rating) === star).length,
+    }))
+    const total = rows.length
+    const avg = total ? rows.reduce((a, r) => a + (r.rating || 0), 0) / total : 0
     const maxCount = Math.max(...breakdown.map((b) => b.count), 1)
-    return { reviews, breakdown, total: reviews.length, avg, maxCount }
-  }, [data])
+    return { breakdown, total, avg, maxCount }
+  }, [rows])
 
-  if (!s) return <div className="spinner" />
+  async function doDelete() {
+    setBusy(true)
+    try {
+      await api.remove(confirm.id)
+      toast.ok('Review deleted')
+      setConfirm(null)
+      load()
+    } catch (e) {
+      toast.bad(e.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  if (!rows || !stats) return <div className="spinner" />
+
+  const pageRows = rows.slice((page - 1) * PAGE, page * PAGE)
 
   return (
     <>
@@ -72,48 +106,86 @@ export default function Reviews() {
 
       <div className="grid-2b" style={{ marginBottom: 20 }}>
         <div className="card rating-summary">
-          <div className="rs-big">{s.avg.toFixed(1)}</div>
-          <Stars n={s.avg} size={20} />
-          <div className="rs-total">{s.total} total reviews</div>
+          <div className="rs-big">{stats.avg.toFixed(1)}</div>
+          <Stars n={stats.avg} size={20} />
+          <div className="rs-total">{stats.total} total review{stats.total === 1 ? '' : 's'}</div>
         </div>
 
         <div className="card card-pad">
           <div className="section-title">Rating Breakdown</div>
-          {s.breakdown.map((b) => (
+          {stats.breakdown.map((b) => (
             <div className="rb-row" key={b.star}>
-              <span className="rb-star">{b.star} <IconStar size={13} fill="#d4af37" style={{ color: '#d4af37' }} /></span>
-              <div className="progress"><span style={{ width: `${(b.count / s.maxCount) * 100}%`, background: 'linear-gradient(90deg,var(--gold-300),var(--gold-500))' }} /></div>
+              <span className="rb-star">
+                {b.star}{' '}
+                <IconStar size={13} fill="#d4af37" style={{ color: '#d4af37' }} />
+              </span>
+              <div className="progress">
+                <span
+                  style={{
+                    width: `${(b.count / stats.maxCount) * 100}%`,
+                    background: 'linear-gradient(90deg,var(--gold-300),var(--gold-500))',
+                  }}
+                />
+              </div>
               <span className="rb-count">{b.count}</span>
             </div>
           ))}
         </div>
       </div>
 
-      <div className="rev-list">
-        {s.reviews.slice((page - 1) * PAGE, page * PAGE).map((r) => (
-          <div className="card card-pad review-card" key={r.id}>
-            <div className="review-head">
-              <div className="person">
-                <div className="avatar">{r.avatar}</div>
-                <div>
-                  <div className="p-name">{r.name}</div>
-                  <div className="p-sub">on {r.product}</div>
+      {rows.length === 0 ? (
+        <div className="card">
+          <div className="empty">
+            <div className="em-ico">💬</div>
+            <p>No reviews yet</p>
+          </div>
+        </div>
+      ) : (
+        <>
+          <div className="rev-list">
+            {pageRows.map((r) => (
+              <div className="card card-pad review-card" key={r.id}>
+                <div className="review-head">
+                  <div className="person">
+                    <div className="avatar">{initials(r.name)}</div>
+                    <div>
+                      <div className="p-name">{r.name}</div>
+                      <div className="p-sub">
+                        on {productNameById[r.productId] || r.productId}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="review-meta">
+                    <Stars n={r.rating} />
+                    <div className="p-sub">{formatDate(r.createdAt)}</div>
+                  </div>
+                </div>
+                {r.comment && <p className="review-text">{r.comment}</p>}
+                <div className="review-actions">
+                  <button
+                    className="rev-act"
+                    onClick={() => setConfirm(r)}
+                    style={{ color: '#75001F' }}
+                  >
+                    <IconTrash size={15} /> Delete
+                  </button>
                 </div>
               </div>
-              <div className="review-meta">
-                <Stars n={r.rating} />
-                <div className="p-sub">{r.date}</div>
-              </div>
-            </div>
-            <p className="review-text">{r.text}</p>
-            <div className="review-actions">
-              <button className="rev-act"><IconThumbsUp size={15} /> Helpful ({r.helpful})</button>
-              <button className="rev-act"><IconReply size={15} /> Reply</button>
-            </div>
+            ))}
           </div>
-        ))}
-      </div>
-      <Pagination page={page} pageSize={PAGE} total={s.reviews.length} onChange={setPage} />
+          <Pagination page={page} pageSize={PAGE} total={rows.length} onChange={setPage} />
+        </>
+      )}
+
+      {confirm && (
+        <ConfirmDialog
+          title="Delete review"
+          message={`Delete this review from ${confirm.name}? This can't be undone.`}
+          onConfirm={doDelete}
+          onClose={() => setConfirm(null)}
+          busy={busy}
+        />
+      )}
     </>
   )
 }

@@ -10,6 +10,7 @@ import Customers from './pages/Customers'
 import Payments from './pages/Payments'
 import Categories from './pages/Categories'
 import Occasions from './pages/Occasions'
+import Stories from './pages/Stories'
 import Coupons from './pages/Coupons'
 import Analytics from './pages/Analytics'
 import Reviews from './pages/Reviews'
@@ -47,6 +48,7 @@ export default function App() {
         <Route path="/payments" element={<Payments />} />
         <Route path="/categories" element={<Categories />} />
         <Route path="/occasions" element={<Occasions />} />
+        <Route path="/stories" element={<Stories />} />
         <Route path="/coupons" element={<Coupons />} />
         <Route path="/analytics" element={<Analytics />} />
         <Route path="/reviews" element={<Reviews />} />

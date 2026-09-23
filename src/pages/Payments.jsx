@@ -7,7 +7,7 @@ import Pagination from '../components/Pagination'
 import { IconWallet, IconClock, IconRefresh, IconRupee, IconDownload, IconPlus, IconSearch, IconSmartphone, IconBuilding, IconCard, IconStar } from '../components/icons'
 
 const PAGE = 8
-const METHODS = ['UPI', 'Card', 'Net Banking', 'Wallet', 'COD']
+const METHODS = ['UPI', 'Card', 'Net Banking', 'Wallet']
 const EMPTY = { orderId: '', customer: '', amount: '', method: 'UPI' }
 const TABS = [{ k: 'all', l: 'All' }, { k: 'paid', l: 'Paid' }, { k: 'pending', l: 'Pending' }, { k: 'refunded', l: 'Refunded' }]
 

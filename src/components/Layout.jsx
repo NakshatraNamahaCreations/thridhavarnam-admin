@@ -2,18 +2,15 @@ import { useEffect, useState } from 'react'
 import { Outlet, useNavigate } from 'react-router-dom'
 import Sidebar from './Sidebar'
 import { useAuth } from '../context/AuthContext'
-import { admin, orders as ordersApi } from '../api/client'
-import { useToast } from '../context/ToastContext'
+import { orders as ordersApi } from '../api/client'
 import { initials } from '../lib/format'
-import { IconSearch, IconPlus, IconBell, IconLogout, IconRefresh } from './icons'
+import { IconSearch, IconPlus, IconBell, IconLogout } from './icons'
 
 export default function Layout() {
   const [open, setOpen] = useState(false)
   const { user, logout } = useAuth()
-  const toast = useToast()
   const nav = useNavigate()
   const [menuOpen, setMenuOpen] = useState(false)
-  const [resetting, setResetting] = useState(false)
   const [pending, setPending] = useState(0)
 
   useEffect(() => {
@@ -21,20 +18,6 @@ export default function Layout() {
       .then((os) => setPending(os.filter((o) => ['pending', 'processing'].includes(o.status)).length))
       .catch(() => {})
   }, [])
-
-  async function resetDemo() {
-    setMenuOpen(false)
-    if (!confirm('Reset all demo data (products, orders, customers, payments, categories)?')) return
-    setResetting(true)
-    try {
-      await admin.reset()
-      toast.ok('Demo data reset — reloading')
-      setTimeout(() => location.reload(), 700)
-    } catch (e) {
-      toast.bad(e.message)
-      setResetting(false)
-    }
-  }
 
   return (
     <div className="app-shell">
@@ -50,7 +33,7 @@ export default function Layout() {
 
           <div className="spacer" />
 
-          <button className="btn btn-primary btn-pill" onClick={() => nav('/products')}>
+          <button className="btn btn-primary btn-pill" onClick={() => nav('/products?new=1')}>
             <IconPlus size={18} /> Add Saree
           </button>
 
@@ -61,7 +44,16 @@ export default function Layout() {
 
           <div className="topbar-account">
             <button className="account-btn" onClick={() => setMenuOpen((m) => !m)}>
-              <span className="account-av">{initials(user?.name) || 'A'}</span>
+              {user?.avatar ? (
+                <img
+                  src={user.avatar}
+                  alt=""
+                  className="account-av"
+                  style={{ objectFit: 'cover' }}
+                />
+              ) : (
+                <span className="account-av">{initials(user?.name) || 'A'}</span>
+              )}
               <span className="account-meta">
                 <span className="account-nm">{user?.name || 'Admin'}</span>
                 <span className="account-rl">{user?.role || 'Store Admin'}</span>
@@ -75,9 +67,6 @@ export default function Layout() {
                     <div className="am-nm">{user?.name}</div>
                     <div className="am-em">{user?.email}</div>
                   </div>
-                  <button className="am-item" onClick={resetDemo} disabled={resetting}>
-                    <IconRefresh size={17} /> {resetting ? 'Resetting…' : 'Reset demo data'}
-                  </button>
                   <button className="am-item danger" onClick={logout}>
                     <IconLogout size={17} /> Sign out
                   </button>
