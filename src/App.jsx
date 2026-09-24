@@ -11,11 +11,13 @@ import Payments from './pages/Payments'
 import Categories from './pages/Categories'
 import Occasions from './pages/Occasions'
 import Stories from './pages/Stories'
+import Banners from './pages/Banners'
 import Coupons from './pages/Coupons'
 import Analytics from './pages/Analytics'
 import Reviews from './pages/Reviews'
 import Settings from './pages/Settings'
 import Enquiry from './pages/Enquiry'
+import PriceBuckets from './pages/PriceBuckets'
 
 function Protected({ children }) {
   const { user, ready } = useAuth()
@@ -49,11 +51,13 @@ export default function App() {
         <Route path="/categories" element={<Categories />} />
         <Route path="/occasions" element={<Occasions />} />
         <Route path="/stories" element={<Stories />} />
+        <Route path="/banners" element={<Banners />} />
         <Route path="/coupons" element={<Coupons />} />
         <Route path="/analytics" element={<Analytics />} />
         <Route path="/reviews" element={<Reviews />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="/enquiry" element={<Enquiry/>}/>
+        <Route path="/price-buckets" element={<PriceBuckets />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

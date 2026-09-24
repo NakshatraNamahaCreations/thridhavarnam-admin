@@ -8,7 +8,7 @@ import Modal from '../components/Modal'
 import ConfirmDialog from '../components/ConfirmDialog'
 import Pagination from '../components/Pagination'
 import ColorSelect from '../components/ColorSelect'
-import { IconFilter, IconLayers, IconPlus, IconSearch, IconStar, IconPencil, IconTrash, IconUpload } from '../components/icons'
+import { IconLayers, IconPlus, IconSearch, IconStar, IconPencil, IconTrash, IconUpload } from '../components/icons'
 
 const EMPTY = {
   name: '', category: '', occasion: '', color: '', description: '',
@@ -54,6 +54,13 @@ export default function Products() {
   const [form, setForm] = useState(EMPTY)
   const [saving, setSaving] = useState(false)
   const [confirm, setConfirm] = useState(null)
+
+  // Bulk-add modal state. `csv` holds the raw pasted / uploaded text;
+  // `parsed` is the derived table shown in the preview. Kept separate
+  // so the paste box stays reactive without re-parsing on every render.
+  const [bulkOpen, setBulkOpen] = useState(false)
+  const [bulkCsv, setBulkCsv] = useState('')
+  const [bulkBusy, setBulkBusy] = useState(false)
   const [page, setPage] = useState(1)
   const [searchParams, setSearchParams] = useSearchParams()
 
@@ -211,6 +218,108 @@ export default function Products() {
     catch (e) { toast.bad(e.message) } finally { setSaving(false) }
   }
 
+  // Parse a CSV string into an array of product objects. First row must
+  // be the header; comma-separated with basic quoted-value handling so
+  // fields containing commas can be double-quoted. Returns { items,
+  // errors } — errors is a list of human-readable warnings for skipped
+  // or malformed rows so the admin knows what didn't make it in.
+  const parseBulkCsv = (raw) => {
+    const text = String(raw || '').trim()
+    if (!text) return { items: [], errors: ['No CSV content'] }
+    const lines = text.split(/\r?\n/).filter((l) => l.trim())
+    if (lines.length < 2) return { items: [], errors: ['CSV must have a header row and at least one data row'] }
+
+    const parseLine = (line) => {
+      const out = []
+      let cur = ''
+      let inQuotes = false
+      for (let i = 0; i < line.length; i++) {
+        const c = line[i]
+        if (inQuotes) {
+          if (c === '"' && line[i + 1] === '"') { cur += '"'; i++ }
+          else if (c === '"') inQuotes = false
+          else cur += c
+        } else {
+          if (c === '"') inQuotes = true
+          else if (c === ',') { out.push(cur); cur = '' }
+          else cur += c
+        }
+      }
+      out.push(cur)
+      return out.map((s) => s.trim())
+    }
+
+    const headers = parseLine(lines[0]).map((h) => h.toLowerCase())
+    const errors = []
+    const items = []
+
+    for (let r = 1; r < lines.length; r++) {
+      const cells = parseLine(lines[r])
+      const row = {}
+      headers.forEach((h, i) => { row[h] = cells[i] ?? '' })
+      if (!row.name) { errors.push(`Row ${r + 1}: missing name — skipped`); continue }
+
+      const item = {
+        name: row.name,
+        category: row.category || '',
+        occasion: row.occasion || '',
+        color: row.color || '',
+        weave: row.weave || '',
+        region: row.region || '',
+        description: row.description || '',
+        price: row.price ? Number(row.price) : 0,
+        mrp: row.mrp ? Number(row.mrp) : 0,
+        stock: row.stock ? Number(row.stock) : 0,
+        status: row.status || 'active',
+      }
+      // Flags can be pipe- or slash-separated inside a single cell
+      // (comma would collide with CSV column separators).
+      if (row.flags) {
+        item.flags = row.flags.split(/[|/]/).map((s) => s.trim()).filter(Boolean)
+      }
+      items.push(item)
+    }
+    return { items, errors }
+  }
+
+  const bulkParsed = parseBulkCsv(bulkCsv)
+
+  async function onBulkFile(e) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    try {
+      const text = await file.text()
+      setBulkCsv(text)
+    } catch (err) {
+      toast.bad(err.message || 'Could not read file')
+    } finally {
+      e.target.value = ''
+    }
+  }
+
+  async function submitBulk() {
+    const { items, errors } = bulkParsed
+    if (!items.length) {
+      return toast.bad(errors[0] || 'Nothing to import')
+    }
+    setBulkBusy(true)
+    try {
+      await api.bulk(items)
+      toast.ok(`Imported ${items.length} saree${items.length === 1 ? '' : 's'}`)
+      setBulkOpen(false)
+      setBulkCsv('')
+      load()
+    } catch (e) {
+      toast.bad(e.message)
+    } finally {
+      setBulkBusy(false)
+    }
+  }
+
+  // Sample CSV shown as a placeholder inside the paste box + as the
+  // downloadable template. Keep column names in sync with parseBulkCsv.
+  const SAMPLE_CSV = 'name,category,occasion,color,weave,region,price,mrp,stock,description,flags\nMallika Mysore,silk,festive,green,Mysore Silk,Mysuru,14799,17999,4,"Handloom Mysore silk with gold zari border",new_in|bestseller\nRoyal Kanjivaram,silk,bridal,maroon,Kanjivaram,Kanchipuram,32000,42000,2,"Bridal Kanjivaram with peacock motifs",bestseller'
+
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }))
   const toggleBadge = (key) => setForm((f) => {
     const has = (f.badges || []).includes(key)
@@ -230,8 +339,7 @@ export default function Products() {
           <p>{rows ? `${rows.length} products in your catalogue` : 'Loading catalogue…'}</p>
         </div>
         <div className="page-actions">
-          <button className="btn btn-outline"><IconFilter size={17} /> Filters</button>
-          <button className="btn btn-outline"><IconLayers size={17} /> Bulk Add</button>
+          <button className="btn btn-outline" onClick={() => { setBulkCsv(''); setBulkOpen(true) }}><IconLayers size={17} /> Bulk Add</button>
           <button className="btn btn-primary" onClick={openNew}><IconPlus size={18} /> Add Saree</button>
         </div>
       </div>
@@ -598,6 +706,131 @@ export default function Products() {
           onClose={() => setConfirm(null)}
           busy={saving}
         />
+      )}
+
+      {bulkOpen && (
+        <Modal
+          title="Bulk add sarees"
+          subtitle="Paste CSV rows or upload a .csv file — one saree per row"
+          onClose={() => { if (!bulkBusy) setBulkOpen(false) }}
+          footer={
+            <>
+              <button className="btn btn-outline" onClick={() => setBulkOpen(false)} disabled={bulkBusy}>Cancel</button>
+              <button
+                className="btn btn-primary"
+                onClick={submitBulk}
+                disabled={bulkBusy || bulkParsed.items.length === 0}
+              >
+                {bulkBusy ? 'Importing…' : `Import ${bulkParsed.items.length} saree${bulkParsed.items.length === 1 ? '' : 's'}`}
+              </button>
+            </>
+          }
+        >
+          <div style={{ marginBottom: 12 }}>
+            <p style={{ fontSize: 13, color: '#36363e', lineHeight: 1.5, margin: 0 }}>
+              Header row is required. Supported columns: <code>name</code> (required),
+              {' '}<code>category</code>, <code>occasion</code>, <code>color</code>,{' '}
+              <code>weave</code>, <code>region</code>, <code>price</code>, <code>mrp</code>,{' '}
+              <code>stock</code>, <code>description</code>, <code>status</code>, <code>flags</code>.
+              Wrap values containing commas in double quotes. Flags are separated by <code>|</code>{' '}
+              (e.g. <code>new_in|bestseller</code>).
+            </p>
+          </div>
+
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12, flexWrap: 'wrap' }}>
+            <label className="btn btn-outline" style={{ cursor: 'pointer', fontSize: 12 }}>
+              Upload .csv
+              <input
+                type="file"
+                accept=".csv,text/csv"
+                onChange={onBulkFile}
+                disabled={bulkBusy}
+                style={{ display: 'none' }}
+              />
+            </label>
+            <button
+              type="button"
+              className="btn btn-outline"
+              style={{ fontSize: 12 }}
+              onClick={() => setBulkCsv(SAMPLE_CSV)}
+              disabled={bulkBusy}
+            >
+              Load sample rows
+            </button>
+            {bulkCsv && (
+              <button
+                type="button"
+                className="btn btn-outline"
+                style={{ fontSize: 12, color: '#75001F', borderColor: '#75001F' }}
+                onClick={() => setBulkCsv('')}
+                disabled={bulkBusy}
+              >
+                Clear
+              </button>
+            )}
+          </div>
+
+          <div className="field full" style={{ marginBottom: 12 }}>
+            <label>CSV</label>
+            <textarea
+              value={bulkCsv}
+              onChange={(e) => setBulkCsv(e.target.value)}
+              rows={10}
+              placeholder={SAMPLE_CSV}
+              style={{ fontFamily: 'monospace', fontSize: 12 }}
+              disabled={bulkBusy}
+            />
+          </div>
+
+          {(bulkParsed.items.length > 0 || bulkParsed.errors.length > 0) && (
+            <div style={{ marginTop: 8 }}>
+              <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>
+                Preview — {bulkParsed.items.length} valid row{bulkParsed.items.length === 1 ? '' : 's'}
+                {bulkParsed.errors.length > 0 && (
+                  <span style={{ color: '#75001F', marginLeft: 8, fontWeight: 500 }}>
+                    · {bulkParsed.errors.length} skipped
+                  </span>
+                )}
+              </div>
+              {bulkParsed.items.length > 0 && (
+                <div style={{ maxHeight: 220, overflow: 'auto', border: '1px solid #e5e5ea', borderRadius: 6 }}>
+                  <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse' }}>
+                    <thead style={{ background: '#f7f7fa' }}>
+                      <tr>
+                        <th style={{ textAlign: 'left', padding: '6px 10px' }}>Name</th>
+                        <th style={{ textAlign: 'left', padding: '6px 10px' }}>Category</th>
+                        <th style={{ textAlign: 'left', padding: '6px 10px' }}>Weave</th>
+                        <th style={{ textAlign: 'right', padding: '6px 10px' }}>Price</th>
+                        <th style={{ textAlign: 'right', padding: '6px 10px' }}>Stock</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {bulkParsed.items.slice(0, 20).map((it, i) => (
+                        <tr key={i} style={{ borderTop: '1px solid #eee' }}>
+                          <td style={{ padding: '6px 10px' }}>{it.name}</td>
+                          <td style={{ padding: '6px 10px', color: '#616373' }}>{it.category || '—'}</td>
+                          <td style={{ padding: '6px 10px', color: '#616373' }}>{it.weave || '—'}</td>
+                          <td style={{ padding: '6px 10px', textAlign: 'right' }}>{it.price ? inr(it.price) : '—'}</td>
+                          <td style={{ padding: '6px 10px', textAlign: 'right' }}>{it.stock}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {bulkParsed.items.length > 20 && (
+                    <div style={{ padding: '6px 10px', fontSize: 11, color: '#8a8b96', textAlign: 'center' }}>
+                      + {bulkParsed.items.length - 20} more…
+                    </div>
+                  )}
+                </div>
+              )}
+              {bulkParsed.errors.length > 0 && (
+                <ul style={{ margin: '8px 0 0', paddingLeft: 20, color: '#75001F', fontSize: 12 }}>
+                  {bulkParsed.errors.map((err, i) => <li key={i}>{err}</li>)}
+                </ul>
+              )}
+            </div>
+          )}
+        </Modal>
       )}
     </>
   )

@@ -1,7 +1,7 @@
 import { NavLink } from 'react-router-dom'
 import {
   IconDashboard, IconOrders, IconShirt, IconInventory, IconUsers,
-  IconTag, IconCalendar, IconCard, IconChart, IconStar, IconSettings, IconWallet, IconPhone, IconBook
+  IconTag, IconCalendar, IconCard, IconChart, IconStar, IconSettings, IconWallet, IconPhone, IconBook, IconImage
 } from './icons'
 
 const NAV = [
@@ -13,7 +13,9 @@ const NAV = [
   { to: '/categories', label: 'Categories', Icon: IconTag },
   { to: '/occasions', label: 'Occasions', Icon: IconCalendar },
   { to: '/stories', label: 'Stories', Icon: IconBook },
+  { to: '/banners', label: 'Banners', Icon: IconImage },
   { to: '/coupons', label: 'Coupons', Icon: IconWallet },
+  { to: '/price-buckets', label: 'Shop by Price', Icon: IconTag },
   { to: '/payments', label: 'Payments', Icon: IconCard },
   { to: '/analytics', label: 'Analytics', Icon: IconChart },
   { to: '/reviews', label: 'Reviews', Icon: IconStar },

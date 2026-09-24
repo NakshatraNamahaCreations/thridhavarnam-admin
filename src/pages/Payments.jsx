@@ -4,18 +4,13 @@ import { inr, payStatusClass, titleCase } from '../lib/format'
 import { useToast } from '../context/ToastContext'
 import Modal from '../components/Modal'
 import Pagination from '../components/Pagination'
-import { IconWallet, IconClock, IconRefresh, IconRupee, IconDownload, IconPlus, IconSearch, IconSmartphone, IconBuilding, IconCard, IconStar } from '../components/icons'
+import { IconWallet, IconClock, IconRefresh, IconRupee, IconDownload, IconPlus, IconSearch } from '../components/icons'
 
 const PAGE = 8
 const METHODS = ['UPI', 'Card', 'Net Banking', 'Wallet']
 const EMPTY = { orderId: '', customer: '', amount: '', method: 'UPI' }
 const TABS = [{ k: 'all', l: 'All' }, { k: 'paid', l: 'Paid' }, { k: 'pending', l: 'Pending' }, { k: 'refunded', l: 'Refunded' }]
 
-const PAYOUTS = [
-  { Icon: IconSmartphone, name: 'UPI — vastra@okhdfc', sub: 'UPI · Primary payout', primary: true },
-  { Icon: IconBuilding, name: 'HDFC Bank •••• 8842', sub: 'Bank · Current account' },
-  { Icon: IconCard, name: 'Razorpay Gateway', sub: 'Gateway · Online checkout' },
-]
 
 export default function Payments() {
   const toast = useToast()
@@ -73,6 +68,36 @@ export default function Payments() {
     try { await api.markPaid(p.id); toast.ok('Marked as paid'); load() }
     catch (e) { toast.bad(e.message) }
   }
+
+  // CSV escape: wrap in quotes and double any existing quotes so
+  // commas, newlines and quotes inside cells don't break the columns.
+  function csvCell(v) {
+    const s = v == null ? '' : String(v)
+    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
+  }
+
+  // Export the currently filtered/searched payments as a CSV download.
+  // Exports what the admin sees — respects the active tab + search box,
+  // ignores pagination.
+  function exportCsv() {
+    if (!filtered || filtered.length === 0) return toast.bad('Nothing to export')
+    const headers = ['id', 'orderId', 'customer', 'amount', 'method', 'status', 'date']
+    const lines = [headers.join(',')]
+    for (const p of filtered) {
+      lines.push(headers.map((h) => csvCell(p[h])).join(','))
+    }
+    const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    const stamp = new Date().toISOString().slice(0, 10)
+    a.href = url
+    a.download = `payments-${stamp}.csv`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+    toast.ok(`Exported ${filtered.length} payment${filtered.length === 1 ? '' : 's'}`)
+  }
   async function refund(p) {
     if (!confirm(`Refund ${inr(p.amount)} to ${p.customer}? The linked order will be cancelled.`)) return
     try { await api.refund(p.id); toast.ok('Payment refunded'); load() }
@@ -95,7 +120,7 @@ export default function Payments() {
           <p>Track transactions, settlements and refunds</p>
         </div>
         <div className="page-actions">
-          <button className="btn btn-outline"><IconDownload size={17} /> Export</button>
+          <button className="btn btn-outline" onClick={exportCsv}><IconDownload size={17} /> Export</button>
           <button className="btn btn-primary" onClick={() => { setForm(EMPTY); setRecording(true) }}><IconPlus size={18} /> Record Payment</button>
         </div>
       </div>
@@ -111,24 +136,6 @@ export default function Payments() {
           ))}
         </div>
       )}
-
-      <div className="card card-pad" style={{ marginBottom: 22 }}>
-        <div className="section-title">Payout Methods</div>
-        <div className="payout-grid">
-          {PAYOUTS.map((m) => (
-            <div className="payout" key={m.name}>
-              <div className="payout-ico"><m.Icon size={22} /></div>
-              <div className="payout-meta">
-                <div className="payout-name">
-                  {m.name}
-                  {m.primary && <span className="primary-tag"><IconStar size={12} /> Primary</span>}
-                </div>
-                <div className="payout-sub">{m.sub}</div>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
 
       <div className="card">
         <div className="tab-bar">

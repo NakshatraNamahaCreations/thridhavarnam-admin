@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { occasions as api, products as prodApi } from '../api/client'
+import { uploadImage, isImageSrc } from '../lib/image'
 import { useToast } from '../context/ToastContext'
 import Modal from '../components/Modal'
 import ConfirmDialog from '../components/ConfirmDialog'
@@ -16,7 +17,7 @@ const COLORS = [
 ]
 const CYCLE = ['rose', 'gold', 'maroon', 'ink', 'rose', 'gold']
 const gradOf = (c, i) => COLORS.find((x) => x.key === c.color)?.grad || COLORS.find((x) => x.key === CYCLE[i % CYCLE.length]).grad
-const EMPTY = { name: '', color: 'rose' }
+const EMPTY = { name: '', color: 'rose', image: '', fromAmount: '', toAmount: '' }
 
 export default function Occasions() {
   const toast = useToast()
@@ -25,6 +26,7 @@ export default function Occasions() {
   const [editing, setEditing] = useState(null)
   const [form, setForm] = useState(EMPTY)
   const [saving, setSaving] = useState(false)
+  const [uploading, setUploading] = useState(false)
   const [confirm, setConfirm] = useState(null)
   const [page, setPage] = useState(1)
 
@@ -45,15 +47,52 @@ export default function Occasions() {
   }, [])
 
   function openNew() { setForm(EMPTY); setEditing({}) }
-  function openEdit(c) { setForm({ name: c.name, color: c.color || 'rose' }); setEditing(c) }
+  function openEdit(c) {
+    setForm({
+      name: c.name,
+      color: c.color || 'rose',
+      image: c.image || '',
+      fromAmount: c.fromAmount ? String(c.fromAmount) : '',
+      toAmount: c.toAmount ? String(c.toAmount) : '',
+    })
+    setEditing(c)
+  }
+
+  async function onFile(e) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setUploading(true)
+    try {
+      const url = await uploadImage(file)
+      setForm((f) => ({ ...f, image: url }))
+      toast.ok('Image uploaded')
+    } catch (err) {
+      toast.bad(err.message || 'Upload failed')
+    } finally {
+      setUploading(false)
+      e.target.value = ''
+    }
+  }
 
   async function save(e) {
     e.preventDefault()
     if (!form.name.trim()) return toast.bad('Occasion name is required')
     setSaving(true)
     try {
-      if (editing.id) { await api.update(editing.id, { color: form.color, name: form.name }); toast.ok('Occasion updated') }
-      else { await api.create(form); toast.ok('Occasion added') }
+      const payload = {
+        name: form.name,
+        color: form.color,
+        image: form.image,
+        fromAmount: Number(form.fromAmount) || 0,
+        toAmount: Number(form.toAmount) || 0,
+      }
+      if (editing.id) {
+        await api.update(editing.id, payload)
+        toast.ok('Occasion updated')
+      } else {
+        await api.create(payload)
+        toast.ok('Occasion added')
+      }
       setEditing(null); load()
     } catch (e) { toast.bad(e.message) } finally { setSaving(false) }
   }
@@ -85,8 +124,15 @@ export default function Occasions() {
             const st = stats[c.id] || stats[c.name?.toLowerCase()] || { products: 0, sold: 0 }
             return (
               <div className="cat-card" key={c.id}>
-                <div className="cat-banner" style={{ background: gradOf(c, i) }}>
-                  <IconCalendar size={38} />
+                <div
+                  className="cat-banner"
+                  style={{
+                    background: isImageSrc(c.image)
+                      ? `url(${c.image}) center/cover`
+                      : gradOf(c, i),
+                  }}
+                >
+                  {!isImageSrc(c.image) && <IconCalendar size={38} />}
                 </div>
                 <div className="cat-body">
                   <div className="cat-head">
@@ -96,6 +142,15 @@ export default function Occasions() {
                       <button className="icon-btn danger" title="Delete" onClick={() => setConfirm(c)}><IconTrash size={15} /></button>
                     </div>
                   </div>
+                  {(c.fromAmount > 0 || c.toAmount > 0) && (
+                    <div style={{ fontSize: 12, color: '#616373', marginTop: 4 }}>
+                      {c.fromAmount > 0 && c.toAmount > 0
+                        ? `₹${Number(c.fromAmount).toLocaleString('en-IN')} – ₹${Number(c.toAmount).toLocaleString('en-IN')}`
+                        : c.fromAmount > 0
+                        ? `From ₹${Number(c.fromAmount).toLocaleString('en-IN')}`
+                        : `Up to ₹${Number(c.toAmount).toLocaleString('en-IN')}`}
+                    </div>
+                  )}
                   <div className="cat-stats">
                     <div>
                       <div className="cat-num">{st.products}</div>
@@ -123,12 +178,12 @@ export default function Occasions() {
           footer={
             <>
               <button className="btn btn-outline" onClick={() => setEditing(null)}>Cancel</button>
-              <button className="btn btn-primary" onClick={save} disabled={saving}>{saving ? 'Saving…' : editing.id ? 'Save changes' : 'Create'}</button>
+              <button className="btn btn-primary" onClick={save} disabled={saving || uploading}>{saving ? 'Saving…' : editing.id ? 'Save changes' : 'Create'}</button>
             </>
           }
         >
           <form onSubmit={save}>
-            <div className="field full" style={{ marginBottom: 18 }}>
+            <div className="field full" style={{ marginBottom: 14 }}>
               <label>Occasion name</label>
               <input
                 value={form.name}
@@ -139,6 +194,64 @@ export default function Occasions() {
               />
               {editing.id && <span className="img-hint">Occasion id is fixed once created.</span>}
             </div>
+
+            <div className="field full" style={{ marginBottom: 14 }}>
+              <label>Tile image</label>
+              {isImageSrc(form.image) && (
+                <div style={{ marginBottom: 8 }}>
+                  <img
+                    src={form.image}
+                    alt=""
+                    style={{ maxWidth: 200, height: 'auto', borderRadius: 6, border: '1px solid #e5e5ea' }}
+                  />
+                </div>
+              )}
+              <input
+                type="file"
+                accept="image/*"
+                onChange={onFile}
+                disabled={uploading}
+              />
+              {uploading && <span className="img-hint">Uploading…</span>}
+              {form.image && (
+                <button
+                  type="button"
+                  className="btn btn-outline"
+                  style={{ marginTop: 6, fontSize: 12 }}
+                  onClick={() => setForm((f) => ({ ...f, image: '' }))}
+                >
+                  Remove image
+                </button>
+              )}
+              <span className="img-hint">Shown on the storefront home occasion tile. Portrait crops work best.</span>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
+              <div className="field">
+                <label>From amount (₹)</label>
+                <input
+                  type="number"
+                  min="0"
+                  value={form.fromAmount}
+                  onChange={(e) => setForm((f) => ({ ...f, fromAmount: e.target.value }))}
+                  placeholder="4500"
+                />
+              </div>
+              <div className="field">
+                <label>To amount (₹)</label>
+                <input
+                  type="number"
+                  min="0"
+                  value={form.toAmount}
+                  onChange={(e) => setForm((f) => ({ ...f, toAmount: e.target.value }))}
+                  placeholder="7000"
+                />
+              </div>
+              <div className="field full" style={{ gridColumn: '1 / -1', marginTop: -6 }}>
+                <span className="img-hint">Displayed as "₹X – ₹Y" on the tile. Leave To blank for open-ended "From ₹X". Both 0 hides the price entirely.</span>
+              </div>
+            </div>
+
             <div className="field full">
               <label>Accent colour</label>
               <div className="color-grid">
@@ -154,6 +267,7 @@ export default function Occasions() {
                   </button>
                 ))}
               </div>
+              <span className="img-hint">Used as a fallback gradient when no tile image is set.</span>
             </div>
           </form>
         </Modal>

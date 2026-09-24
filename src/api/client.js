@@ -107,6 +107,20 @@ export const reviews = {
   list: (productId) => api.get(productId ? `/reviews?productId=${enc(productId)}` : '/reviews'),
   remove: (id) => api.del(`/reviews/${enc(id)}`),
 }
+export const banners = {
+  list: () => api.get('/banners'),
+  get: (id) => api.get(`/banners/${enc(id)}`),
+  create: (d) => api.post('/banners', d),
+  update: (id, d) => api.put(`/banners/${enc(id)}`, d),
+  remove: (id) => api.del(`/banners/${enc(id)}`),
+}
+export const priceBuckets = {
+  list: () => api.get('/price-buckets'),
+  get: (id) => api.get(`/price-buckets/${enc(id)}`),
+  create: (d) => api.post('/price-buckets', d),
+  update: (id, d) => api.put(`/price-buckets/${enc(id)}`, d),
+  remove: (id) => api.del(`/price-buckets/${enc(id)}`),
+}
 export const colorways = {
   list: () => api.get('/colorways'),
 }
