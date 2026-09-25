@@ -91,9 +91,12 @@ export default function Dashboard() {
   const s = useMemo(() => {
     if (!data) return null
     const { products, customers, orders, payments } = data
-    const paid = payments.filter((p) => p.status === 'paid')
+    // Only count paid payments whose order still exists, so revenue drops
+    // to zero when there are no orders (stale/orphaned payments ignored).
+    const orderIds = new Set(orders.map((o) => o.id))
+    const paid = payments.filter((p) => p.status === 'paid' && orderIds.has(p.orderId))
     const revenue = paid.reduce((a, p) => a + (p.amount || 0), 0)
-    const allRevenue = customers.reduce((a, c) => a + (c.spent || 0), 0) || revenue
+    const allRevenue = revenue
     const totalStock = products.reduce((a, p) => a + (p.stock || 0), 0)
 
     // daily revenue trend (area chart)
@@ -124,8 +127,8 @@ export default function Dashboard() {
       products, customers, orders, revenue, allRevenue, totalStock,
       trend, revVals, ordSeries, custSeries, stockSeries,
       cats, catTotal,
-      revDelta: 12.5, ordDelta: 8.2,
-      custDelta: 5.1, stockDelta: -3.4,
+      revDelta: revenue ? 12.5 : 0, ordDelta: orders.length ? 8.2 : 0,
+      custDelta: customers.length ? 5.1 : 0, stockDelta: totalStock ? -3.4 : 0,
       pending: orders.filter((o) => ['pending', 'processing'].includes(o.status)).length,
       topProducts: [...products].sort((a, b) => (b.sold || 0) - (a.sold || 0)).slice(0, 5),
       recentOrders: orders.slice(0, 5),

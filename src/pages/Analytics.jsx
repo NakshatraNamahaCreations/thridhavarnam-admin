@@ -133,7 +133,11 @@ export default function Analytics() {
 
   const s = useMemo(() => {
     if (!data) return null
-    const { products, orders, customers, payments } = data
+    const { products, orders, customers } = data
+    // Ignore paid payments whose order no longer exists — revenue should
+    // be zero when there are no orders.
+    const orderIds = new Set(orders.map((o) => o.id))
+    const payments = data.payments.filter((p) => orderIds.has(p.orderId))
 
     // Split into current 30-day window vs previous 30-day window so we
     // can compute honest period-over-period deltas. Records without a
