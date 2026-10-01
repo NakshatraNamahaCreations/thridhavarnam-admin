@@ -33,6 +33,7 @@ const BADGES = [
   { key: 'ready', label: 'Ready to ship' },
   { key: 'fast', label: 'Selling fast' },
   { key: 'last', label: 'Last chance' },
+  { key: 'silk', label: 'Silk Tag'}
 ]
 
 const FLAGS = [
