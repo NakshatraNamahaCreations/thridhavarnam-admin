@@ -25,6 +25,7 @@ const EMPTY = {
 const TYPE_LABEL = {
   hero: 'Home hero',
   weave: 'Shop by weave',
+  parallax: 'Parallax feature',
 }
 
 export default function Banners() {
@@ -90,6 +91,8 @@ export default function Banners() {
     if (form.type === 'weave') {
       if (!form.weave.trim()) return toast.bad('Pick a weave for this tile')
       if (!form.image) return toast.bad('Upload an image for the weave tile')
+    } else if (form.type === 'parallax') {
+      if (!form.image) return toast.bad('Upload an image for the parallax banner')
     } else if (!form.image && !form.title.trim()) {
       return toast.bad('Add an image or a title')
     }
@@ -97,7 +100,7 @@ export default function Banners() {
     try {
       const payload = {
         type: form.type,
-        weave: form.type === 'weave' ? form.weave.trim() : '',
+        weave: (form.type === 'weave' || form.type === 'parallax') ? form.weave.trim() : '',
         title: form.title.trim(),
         subtitle: form.subtitle.trim(),
         image: form.image,
@@ -146,13 +149,14 @@ export default function Banners() {
   }
 
   const isWeave = form.type === 'weave'
+  const isParallax = form.type === 'parallax'
 
   return (
     <>
       <div className="page-head">
         <div>
           <h1>Banners</h1>
-          <p>Hero carousel slides and Shop-by-weave tile images</p>
+          <p>Hero carousel slides, Shop-by-weave tiles and Feature banners</p>
         </div>
         <div className="page-actions">
           <button className="btn btn-primary" onClick={openNew}><IconPlus size={18} /> New Banner</button>
@@ -181,7 +185,7 @@ export default function Banners() {
                     position: 'absolute',
                     top: 8,
                     left: 8,
-                    background: b.type === 'weave' ? '#0e4d5c' : '#6e1936',
+                    background: b.type === 'weave' ? '#0e4d5c' : b.type === 'parallax' ? '#5c3d0e' : '#6e1936',
                     color: '#fff',
                     fontSize: 10,
                     fontWeight: 700,
@@ -198,7 +202,7 @@ export default function Banners() {
                     <h3>
                       {b.type === 'weave'
                         ? (b.weave || <span style={{ color: '#8a8b96' }}>No weave</span>)
-                        : (b.title || <span style={{ color: '#8a8b96' }}>Untitled banner</span>)}
+                        : (b.title || b.weave || <span style={{ color: '#8a8b96' }}>Untitled banner</span>)}
                     </h3>
                     <div className="cell-actions">
                       <button className="icon-btn" title="Edit" onClick={() => openEdit(b)}><IconPencil size={15} /></button>
@@ -240,7 +244,7 @@ export default function Banners() {
       {editing && (
         <Modal
           title={editing.id ? 'Edit Banner' : 'New Banner'}
-          subtitle={editing.id ? editing.id : 'Hero carousel slide or Shop-by-weave tile'}
+          subtitle={editing.id ? editing.id : 'Hero carousel slide, Shop-by-weave tile or Feature banner'}
           onClose={() => setEditing(null)}
           footer={
             <>
@@ -260,10 +264,13 @@ export default function Banners() {
               >
                 <option value="hero">Home hero slide</option>
                 <option value="weave">Shop by weave tile</option>
+                <option value="parallax">Feature banner</option>
               </select>
               <span className="img-hint">
                 {isWeave
                   ? 'Overrides the tile image for one weave in the storefront Shop by weave rail.'
+                  : isParallax
+                  ? 'Full-width parallax section mid-page on the storefront home page.'
                   : 'Rotating slide on the storefront home page hero carousel.'}
               </span>
             </div>
@@ -281,6 +288,18 @@ export default function Banners() {
                   ))}
                 </select>
                 <span className="img-hint">Options come from Categories. Add a category first if the weave you want isn't listed.</span>
+              </div>
+            )}
+
+            {isParallax && (
+              <div className="field full" style={{ marginBottom: 14 }}>
+                <label>Chip label</label>
+                <input
+                  value={form.weave}
+                  onChange={(e) => setForm((f) => ({ ...f, weave: e.target.value }))}
+                  placeholder="Featured Collection"
+                />
+                <span className="img-hint">Small label shown above the title. Defaults to "Featured Collection" if left blank.</span>
               </div>
             )}
 
@@ -313,7 +332,11 @@ export default function Banners() {
                 </button>
               )}
               <span className="img-hint">
-                {isWeave ? 'Square crops (1:1) fit the weave rail best.' : 'Landscape crops (~16:9) fit the hero best.'}
+                {isWeave
+                  ? 'Square crops (1:1) fit the weave rail best.'
+                  : isParallax
+                  ? 'Landscape crops (~16:9) work best. The left 60% is shown; the right blends into the content panel.'
+                  : 'Landscape crops (~16:9) fit the hero best.'}
               </span>
             </div>
 
@@ -324,7 +347,7 @@ export default function Banners() {
                   <input
                     value={form.title}
                     onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
-                    placeholder="Festive Silks Collection"
+                    placeholder={isParallax ? 'The Heirloom Edit' : 'Festive Silks Collection'}
                     autoFocus
                   />
                 </div>
@@ -334,31 +357,13 @@ export default function Banners() {
                   <textarea
                     value={form.subtitle}
                     onChange={(e) => setForm((f) => ({ ...f, subtitle: e.target.value }))}
-                    placeholder="Hand-woven heirlooms for the season, from ₹8,999."
+                    placeholder={isParallax ? 'Bridal Banarasi, Kanjivaram and Patola — pieces meant to be folded into the next century.' : 'Hand-woven heirlooms for the season, from ₹8,999.'}
                     rows={2}
                   />
                 </div>
-
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
-                  <div className="field">
-                    <label>CTA label</label>
-                    <input
-                      value={form.ctaLabel}
-                      onChange={(e) => setForm((f) => ({ ...f, ctaLabel: e.target.value }))}
-                      placeholder="Shop Now"
-                    />
-                  </div>
-                  <div className="field">
-                    <label>CTA link</label>
-                    <input
-                      value={form.ctaHref}
-                      onChange={(e) => setForm((f) => ({ ...f, ctaHref: e.target.value }))}
-                      placeholder="/shop?tier=festive"
-                    />
-                  </div>
-                </div>
               </>
             )}
+
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
               <div className="field">
