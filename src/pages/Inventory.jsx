@@ -3,6 +3,7 @@ import { products as api, categories as catApi } from '../api/client'
 import { inr, inrK, titleCase } from '../lib/format'
 import { useToast } from '../context/ToastContext'
 import Modal from '../components/Modal'
+import ConfirmDialog from '../components/ConfirmDialog'
 import Pagination from '../components/Pagination'
 import { IconBox, IconAlert, IconBoxX, IconRupee, IconRefresh, IconSearch } from '../components/icons'
 
@@ -16,6 +17,9 @@ export default function Inventory() {
   const [restockRow, setRestockRow] = useState(null)
   const [qty, setQty] = useState('10')
   const [saving, setSaving] = useState(false)
+  // Row-level +N quick action — holds { product, amount } while the
+  // confirmation dialog is open, cleared on confirm or cancel.
+  const [quickConfirm, setQuickConfirm] = useState(null)
   const [page, setPage] = useState(1)
   const [q, setQ] = useState('')
   const [catFilter, setCatFilter] = useState('all')
@@ -63,8 +67,9 @@ export default function Inventory() {
   }, [rows])
 
   async function quickRestock(p, amount) {
+    setSaving(true)
     try { await api.restock(p.id, amount); toast.ok(`+${amount} added to ${p.name}`); load() }
-    catch (e) { toast.bad(e.message) }
+    catch (e) { toast.bad(e.message) } finally { setSaving(false); setQuickConfirm(null) }
   }
 
   async function doRestock(e) {
@@ -196,7 +201,7 @@ export default function Inventory() {
                             : <span className="badge green">Active</span>}
                       </td>
                       <td className="num">
-                        <button className="restock-link" onClick={() => quickRestock(p, 10)}>+10</button>
+                        <button className="restock-link" onClick={() => setQuickConfirm({ product: p, amount: 10 })}>+10</button>
                       </td>
                     </tr>
                   )
@@ -207,6 +212,19 @@ export default function Inventory() {
           </div>
         )}
       </div>
+
+      {quickConfirm && (
+        <ConfirmDialog
+          title="Add stock"
+          message={`Are you sure you want to add ${quickConfirm.amount} units to the stock of "${quickConfirm.product.name}"?`}
+          confirmLabel={saving ? 'Adding…' : `Yes, add ${quickConfirm.amount}`}
+          cancelLabel="No, cancel"
+          tone="primary"
+          onConfirm={() => quickRestock(quickConfirm.product, quickConfirm.amount)}
+          onClose={() => setQuickConfirm(null)}
+          busy={saving}
+        />
+      )}
 
       {restockRow && (
         <Modal

@@ -55,6 +55,9 @@ export default function Products() {
   const [form, setForm] = useState(EMPTY)
   const [saving, setSaving] = useState(false)
   const [confirm, setConfirm] = useState(null)
+  // Edit flow asks for a confirmation before overwriting an existing
+  // product. New-saree creation skips this — nothing to accidentally lose.
+  const [confirmSave, setConfirmSave] = useState(false)
 
   // Bulk-add modal state. `csv` holds the raw pasted / uploaded text;
   // `parsed` is the derived table shown in the preview. Kept separate
@@ -176,9 +179,16 @@ export default function Products() {
     setEditing(p)
   }
 
-  async function save(e) {
-    e.preventDefault()
+  function onSaveClick(e) {
+    if (e && e.preventDefault) e.preventDefault()
     if (!form.name.trim()) return toast.bad('Saree name is required')
+    // Updates to an existing product gate on a confirm; new rows save
+    // straight through since there is nothing to overwrite.
+    if (editing && editing.id) setConfirmSave(true)
+    else doSave()
+  }
+
+  async function doSave() {
     setSaving(true)
     try {
       const images = (form.images || [])
@@ -197,7 +207,7 @@ export default function Products() {
       }
       if (editing.id) { await api.update(editing.id, payload); toast.ok('Saree updated') }
       else { await api.create(payload); toast.ok('Saree added') }
-      setEditing(null); load()
+      setEditing(null); setConfirmSave(false); load()
     } catch (e) { toast.bad(e.message) } finally { setSaving(false) }
   }
 
@@ -428,11 +438,11 @@ export default function Products() {
           footer={
             <>
               <button className="btn btn-outline" onClick={() => setEditing(null)}>Cancel</button>
-              <button className="btn btn-primary" onClick={save} disabled={saving}>{saving ? 'Saving…' : editing.id ? 'Save changes' : 'Add Saree'}</button>
+              <button className="btn btn-primary" onClick={onSaveClick} disabled={saving}>{saving ? 'Saving…' : editing.id ? 'Save changes' : 'Add Saree'}</button>
             </>
           }
         >
-          <form onSubmit={save}>
+          <form onSubmit={onSaveClick}>
             <div className="field full">
               <label>Saree images</label>
               <div className="img-gallery">
@@ -719,10 +729,25 @@ export default function Products() {
 
       {confirm && (
         <ConfirmDialog
-          title="Delete saree"
-          message={`Delete "${confirm.name}" (${confirm.id})? This cannot be undone.`}
+          title="Delete product"
+          message={`Are you sure you want to delete this product? "${confirm.name}" (${confirm.id}) cannot be recovered.`}
+          confirmLabel="Yes, delete"
+          cancelLabel="No, cancel"
           onConfirm={doDelete}
           onClose={() => setConfirm(null)}
+          busy={saving}
+        />
+      )}
+
+      {confirmSave && (
+        <ConfirmDialog
+          title="Update product"
+          message="Are you sure you want to update this product?"
+          confirmLabel={saving ? 'Updating…' : 'Yes, update'}
+          cancelLabel="No, cancel"
+          tone="primary"
+          onConfirm={doSave}
+          onClose={() => setConfirmSave(false)}
           busy={saving}
         />
       )}

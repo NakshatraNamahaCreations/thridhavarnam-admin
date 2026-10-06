@@ -1,14 +1,24 @@
 import Modal from './Modal'
 
-export default function ConfirmDialog({ title, message, confirmLabel = 'Delete', onConfirm, onClose, busy }) {
+export default function ConfirmDialog({
+  title,
+  message,
+  confirmLabel = 'Delete',
+  cancelLabel = 'Cancel',
+  tone = 'danger',
+  onConfirm,
+  onClose,
+  busy,
+}) {
+  const confirmClass = tone === 'primary' ? 'btn btn-primary' : 'btn btn-danger'
   return (
     <Modal
       title={title}
       onClose={onClose}
       footer={
         <>
-          <button className="btn btn-ghost" onClick={onClose} disabled={busy}>Cancel</button>
-          <button className="btn btn-danger" onClick={onConfirm} disabled={busy}>
+          <button className="btn btn-ghost" onClick={onClose} disabled={busy}>{cancelLabel}</button>
+          <button className={confirmClass} onClick={onConfirm} disabled={busy}>
             {busy ? 'Working…' : confirmLabel}
           </button>
         </>

@@ -6,8 +6,27 @@ import Modal from '../components/Modal'
 import ConfirmDialog from '../components/ConfirmDialog'
 
 const STATUSES = ['pending', 'processing', 'shipped', 'delivered', 'cancelled']
+// Linear fulfilment path. Status can only move forward along this chain,
+// never backward. `cancelled` is an escape hatch available from any
+// non-terminal state. Both `delivered` and `cancelled` are terminal —
+// once set the dropdown is locked.
+const STATUS_FLOW = ['pending', 'processing', 'shipped', 'delivered']
+const TERMINAL = new Set(['delivered', 'cancelled'])
 const PAYSTATES = ['pending', 'paid', 'refunded']
 const EMPTY = { customer: '', city: '', product: '', items: '1', amount: '', status: 'pending', payment: 'pending' }
+
+// A candidate status is selectable iff it strictly moves the order forward
+// along STATUS_FLOW, OR it's `cancelled` (any pre-terminal state → cancelled
+// is allowed). Terminal states accept nothing. The current status itself is
+// not re-selectable — no point confirming a no-op change.
+function canSelectStatus(current, candidate) {
+  if (TERMINAL.has(current)) return false
+  if (candidate === current) return false
+  if (candidate === 'cancelled') return true
+  const ci = STATUS_FLOW.indexOf(current)
+  const ni = STATUS_FLOW.indexOf(candidate)
+  return ci >= 0 && ni > ci
+}
 
 export default function Orders() {
   const toast = useToast()
@@ -21,6 +40,9 @@ export default function Orders() {
   const [form, setForm] = useState(EMPTY)
   const [saving, setSaving] = useState(false)
   const [confirm, setConfirm] = useState(null)
+  // Pending status change — holds { order, next } between the user picking
+  // a new status in the dropdown and confirming / cancelling the change.
+  const [statusChange, setStatusChange] = useState(null)
 
   const load = () => api.list().then(setRows).catch((e) => toast.bad(e.message))
   useEffect(() => {
@@ -81,9 +103,20 @@ export default function Orders() {
     catch (e) { toast.bad(e.message) } finally { setSaving(false) }
   }
 
-  async function quickStatus(o, status) {
-    try { await api.update(o.id, { status }); load() }
-    catch (e) { toast.bad(e.message) }
+  function requestStatusChange(o, next) {
+    if (!canSelectStatus(o.status, next)) return
+    setStatusChange({ order: o, next })
+  }
+
+  async function applyStatusChange() {
+    if (!statusChange) return
+    setSaving(true)
+    try {
+      await api.update(statusChange.order.id, { status: statusChange.next })
+      toast.ok(`Status updated to ${titleCase(statusChange.next)}`)
+      setStatusChange(null)
+      load()
+    } catch (e) { toast.bad(e.message) } finally { setSaving(false) }
   }
 
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }))
@@ -137,9 +170,15 @@ export default function Orders() {
                         className="select"
                         style={{ padding: '5px 8px', fontSize: 12.5 }}
                         value={o.status}
-                        onChange={(e) => quickStatus(o, e.target.value)}
+                        disabled={TERMINAL.has(o.status)}
+                        title={TERMINAL.has(o.status) ? `Order is ${titleCase(o.status)} — status is locked` : 'Change order status'}
+                        onChange={(e) => requestStatusChange(o, e.target.value)}
                       >
-                        {STATUSES.map((s) => <option key={s} value={s}>{titleCase(s)}</option>)}
+                        {STATUSES.map((s) => (
+                          <option key={s} value={s} disabled={s !== o.status && !canSelectStatus(o.status, s)}>
+                            {titleCase(s)}
+                          </option>
+                        ))}
                       </select>
                     </td>
                     <td>
@@ -218,6 +257,19 @@ export default function Orders() {
           message={`Delete order ${confirm.id} for ${confirm.customer}?`}
           onConfirm={doDelete}
           onClose={() => setConfirm(null)}
+          busy={saving}
+        />
+      )}
+
+      {statusChange && (
+        <ConfirmDialog
+          title="Change order status"
+          message={`Are you sure you want to change the order status of ${statusChange.order.id} from ${titleCase(statusChange.order.status)} to ${titleCase(statusChange.next)}? This cannot be undone — ${titleCase(statusChange.next)} is ${TERMINAL.has(statusChange.next) ? 'a final state and will lock further changes' : 'later in the fulfilment flow, so you will not be able to move back to earlier statuses'}.`}
+          confirmLabel={saving ? 'Updating…' : `Yes, set ${titleCase(statusChange.next)}`}
+          cancelLabel="No, cancel"
+          tone={statusChange.next === 'cancelled' ? 'danger' : 'primary'}
+          onConfirm={applyStatusChange}
+          onClose={() => setStatusChange(null)}
           busy={saving}
         />
       )}
