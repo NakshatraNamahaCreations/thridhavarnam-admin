@@ -8,7 +8,7 @@ import Modal from '../components/Modal'
 import ConfirmDialog from '../components/ConfirmDialog'
 import Pagination from '../components/Pagination'
 import ColorSelect from '../components/ColorSelect'
-import { IconLayers, IconPlus, IconSearch, IconStar, IconPencil, IconTrash, IconUpload } from '../components/icons'
+import { IconLayers, IconPlus, IconSearch, IconStar, IconPencil, IconTrash, IconUpload, IconDownload } from '../components/icons'
 
 const EMPTY = {
   name: '', category: '', occasion: '', color: '', description: '',
@@ -320,6 +320,24 @@ export default function Products() {
   // Sample CSV shown as a placeholder inside the paste box + as the
   // downloadable template. Keep column names in sync with parseBulkCsv.
   const SAMPLE_CSV = 'name,category,occasion,color,weave,region,price,mrp,stock,description,flags\nMallika Mysore,silk,festive,green,Mysore Silk,Mysuru,14799,17999,4,"Handloom Mysore silk with gold zari border",new_in|bestseller\nRoyal Kanjivaram,silk,bridal,maroon,Kanjivaram,Kanchipuram,32000,42000,2,"Bridal Kanjivaram with peacock motifs",bestseller'
+
+  // Download the sample CSV as a file so admins can fill it offline in
+  // Excel / Sheets then re-upload via the "Upload .csv" button. We write
+  // CRLF line endings (Excel on Windows expects them for clean rows) and
+  // prefix a UTF-8 BOM so Excel renders ₹/region names correctly even
+  // on locales where it defaults to ANSI.
+  const downloadBulkTemplate = () => {
+    const csv = SAMPLE_CSV.replace(/\r?\n/g, '\r\n')
+    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'thridha-varnam-bulk-sarees-template.csv'
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+  }
 
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }))
   const toggleBadge = (key) => setForm((f) => {
@@ -729,6 +747,11 @@ export default function Products() {
         >
           <div style={{ marginBottom: 12 }}>
             <p style={{ fontSize: 13, color: '#36363e', lineHeight: 1.5, margin: 0 }}>
+              <b>New here?</b> Click <b>Download template</b>, open the file in Excel
+              or Google Sheets, add one saree per row keeping the header untouched,
+              save as <code>.csv</code>, then use <b>Upload .csv</b> to import.
+            </p>
+            <p style={{ fontSize: 13, color: '#36363e', lineHeight: 1.5, margin: '8px 0 0' }}>
               Header row is required. Supported columns: <code>name</code> (required),
               {' '}<code>category</code>, <code>occasion</code>, <code>color</code>,{' '}
               <code>weave</code>, <code>region</code>, <code>price</code>, <code>mrp</code>,{' '}
@@ -739,6 +762,59 @@ export default function Products() {
           </div>
 
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12, flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              onClick={downloadBulkTemplate}
+              disabled={bulkBusy}
+              title="Download the CSV template so you can fill it in Excel or Sheets"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 8,
+                padding: '8px 14px',
+                fontSize: 12,
+                fontWeight: 600,
+                letterSpacing: '0.02em',
+                color: '#75001F',
+                background: 'linear-gradient(180deg, #FDF3F5 0%, #F8E6EA 100%)',
+                border: '1px solid #75001F',
+                borderRadius: 6,
+                cursor: bulkBusy ? 'not-allowed' : 'pointer',
+                opacity: bulkBusy ? 0.5 : 1,
+                boxShadow: '0 1px 2px rgba(117, 0, 31, 0.08)',
+                transition: 'transform 120ms ease, box-shadow 120ms ease, background 120ms ease',
+              }}
+              onMouseEnter={(e) => {
+                if (bulkBusy) return
+                e.currentTarget.style.background = '#75001F'
+                e.currentTarget.style.color = '#FFF'
+                e.currentTarget.style.boxShadow = '0 2px 6px rgba(117, 0, 31, 0.25)'
+                e.currentTarget.style.transform = 'translateY(-1px)'
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'linear-gradient(180deg, #FDF3F5 0%, #F8E6EA 100%)'
+                e.currentTarget.style.color = '#75001F'
+                e.currentTarget.style.boxShadow = '0 1px 2px rgba(117, 0, 31, 0.08)'
+                e.currentTarget.style.transform = 'translateY(0)'
+              }}
+            >
+              <IconDownload size={14} />
+              Download template
+              <span
+                style={{
+                  marginLeft: 4,
+                  padding: '2px 6px',
+                  fontSize: 10,
+                  fontWeight: 700,
+                  letterSpacing: '0.06em',
+                  background: 'rgba(117, 0, 31, 0.12)',
+                  borderRadius: 3,
+                  textTransform: 'uppercase',
+                }}
+              >
+                .csv
+              </span>
+            </button>
             <label className="btn btn-outline" style={{ cursor: 'pointer', fontSize: 12 }}>
               Upload .csv
               <input

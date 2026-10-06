@@ -1,10 +1,10 @@
 import { useEffect, useState, useMemo } from 'react'
-import { products as api } from '../api/client'
+import { products as api, categories as catApi } from '../api/client'
 import { inr, inrK, titleCase } from '../lib/format'
 import { useToast } from '../context/ToastContext'
 import Modal from '../components/Modal'
 import Pagination from '../components/Pagination'
-import { IconBox, IconAlert, IconBoxX, IconRupee, IconRefresh } from '../components/icons'
+import { IconBox, IconAlert, IconBoxX, IconRupee, IconRefresh, IconSearch } from '../components/icons'
 
 const LOW = 5
 const PAGE = 8
@@ -12,14 +12,44 @@ const PAGE = 8
 export default function Inventory() {
   const toast = useToast()
   const [rows, setRows] = useState(null)
+  const [cats, setCats] = useState([])
   const [restockRow, setRestockRow] = useState(null)
   const [qty, setQty] = useState('10')
   const [saving, setSaving] = useState(false)
   const [page, setPage] = useState(1)
+  const [q, setQ] = useState('')
+  const [catFilter, setCatFilter] = useState('all')
+  // Stock status filter — mirrors the badges in the table ('all' | 'active'
+  // | 'low' | 'out') so the chip row doubles as a quick way to drill into
+  // whatever needs attention first.
+  const [stockFilter, setStockFilter] = useState('all')
 
   const load = () => api.list().then(setRows).catch((e) => toast.bad(e.message))
-  useEffect(() => { load() }, [])
-  const paged = rows ? rows.slice((page - 1) * PAGE, page * PAGE) : []
+  useEffect(() => {
+    load()
+    catApi.list().then(setCats).catch(() => {})
+  }, [])
+  // Reset to page 1 whenever any filter changes so the user isn't stranded
+  // on an empty page after narrowing the result set.
+  useEffect(() => { setPage(1) }, [q, catFilter, stockFilter])
+
+  const filtered = useMemo(() => {
+    if (!rows) return []
+    const needle = q.trim().toLowerCase()
+    return rows.filter((p) => {
+      if (catFilter !== 'all' && p.category !== catFilter) return false
+      if (stockFilter === 'active' && !(p.stock > LOW)) return false
+      if (stockFilter === 'low' && !(p.stock > 0 && p.stock <= LOW)) return false
+      if (stockFilter === 'out' && p.stock !== 0) return false
+      if (needle) {
+        const hay = `${p.name} ${p.id} ${p.weave || ''} ${p.color || ''}`.toLowerCase()
+        if (!hay.includes(needle)) return false
+      }
+      return true
+    })
+  }, [rows, q, catFilter, stockFilter])
+
+  const paged = filtered.slice((page - 1) * PAGE, page * PAGE)
 
   const stats = useMemo(() => {
     if (!rows) return null
@@ -80,9 +110,66 @@ export default function Inventory() {
         </div>
       )}
 
+      {rows && (
+        <div className="card filter-bar">
+          <div className="search-box grow">
+            <IconSearch size={18} />
+            <input
+              placeholder="Search by name, SKU, weave or colour…"
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+            />
+          </div>
+          <div className="chips">
+            <button
+              className={`chip ${catFilter === 'all' ? 'active' : ''}`}
+              onClick={() => setCatFilter('all')}
+            >
+              All
+            </button>
+            {cats.map((c) => (
+              <button
+                key={c.id}
+                className={`chip ${catFilter === c.id ? 'active' : ''}`}
+                onClick={() => setCatFilter(c.id)}
+              >
+                {c.name}
+              </button>
+            ))}
+          </div>
+          <div className="chips">
+            {[
+              { id: 'all', label: 'Any stock' },
+              { id: 'active', label: 'Active' },
+              { id: 'low', label: 'Low' },
+              { id: 'out', label: 'Out of stock' },
+            ].map((s) => (
+              <button
+                key={s.id}
+                className={`chip ${stockFilter === s.id ? 'active' : ''}`}
+                onClick={() => setStockFilter(s.id)}
+              >
+                {s.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="card">
-        <div className="card-head"><h3>Stock Levels</h3></div>
-        {!rows ? <div className="spinner" /> : (
+        <div className="card-head">
+          <h3>Stock Levels</h3>
+          {rows && (
+            <span className="muted" style={{ fontSize: 12 }}>
+              {filtered.length === rows.length
+                ? `${rows.length} product${rows.length === 1 ? '' : 's'}`
+                : `${filtered.length} of ${rows.length} matching`}
+            </span>
+          )}
+        </div>
+        {!rows ? <div className="spinner" /> : filtered.length === 0 ? (
+          <div className="empty"><div className="em-ico">🥻</div><p>No sarees match these filters</p></div>
+        ) : (
           <div className="table-wrap">
             <table className="data">
               <thead>
@@ -116,7 +203,7 @@ export default function Inventory() {
                 })}
               </tbody>
             </table>
-            <div className="table-pager"><Pagination page={page} pageSize={PAGE} total={rows.length} onChange={setPage} /></div>
+            <div className="table-pager"><Pagination page={page} pageSize={PAGE} total={filtered.length} onChange={setPage} /></div>
           </div>
         )}
       </div>

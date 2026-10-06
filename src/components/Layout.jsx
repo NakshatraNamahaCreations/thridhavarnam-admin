@@ -19,12 +19,18 @@ export default function Layout() {
       .catch(() => {})
   }, [])
 
+  useEffect(() => {
+    document.body.style.overflow = open ? 'hidden' : ''
+    return () => { document.body.style.overflow = '' }
+  }, [open])
+
   return (
     <div className="app-shell">
       <Sidebar open={open} onNavigate={() => setOpen(false)} pendingCount={pending} />
+      {open && <div className="sidebar-scrim" onClick={() => setOpen(false)} />}
       <div className="main-area">
         <header className="topbar">
-          <button className="icon-btn hamburger" onClick={() => setOpen((o) => !o)}>☰</button>
+          <button className="icon-btn hamburger" onClick={() => setOpen((o) => !o)} aria-label="Toggle navigation">☰</button>
 
           <div className="topbar-search">
             <IconSearch size={18} />
@@ -33,8 +39,8 @@ export default function Layout() {
 
           <div className="spacer" />
 
-          <button className="btn btn-primary btn-pill" onClick={() => nav('/products?new=1')}>
-            <IconPlus size={18} /> Add Saree
+          <button className="btn btn-primary btn-pill topbar-add" onClick={() => nav('/products?new=1')}>
+            <IconPlus size={18} /> <span className="topbar-add-label">Add Saree</span>
           </button>
 
           <button className="topbar-bell" title="Notifications">

@@ -40,11 +40,22 @@ export default function Customers() {
 
   const filtered = useMemo(() => {
     if (!rows) return []
-    return rows.filter((c) => {
-      if (segFilter !== 'all' && c.segment !== segFilter) return false
+    const matched = rows.filter((c) => {
+      if (segFilter === 'registered') {
+        if (c.source !== 'registered') return false
+      } else if (segFilter !== 'all' && c.segment !== segFilter) {
+        return false
+      }
       if (q && !`${c.name} ${c.email} ${c.phone} ${c.city} ${c.id}`.toLowerCase().includes(q.toLowerCase())) return false
       return true
     })
+    // Newest first — sort by createdAt, fall back to the YYYY-MM-DD `joined`
+    // string. Guards against seeded rows that pre-date Mongoose timestamps.
+    const ts = (c) => {
+      const t = new Date(c.createdAt || c.joined || 0).getTime()
+      return Number.isFinite(t) ? t : 0
+    }
+    return matched.sort((a, b) => ts(b) - ts(a))
   }, [rows, q, segFilter])
   const paged = filtered.slice((page - 1) * PAGE, page * PAGE)
 
@@ -75,7 +86,13 @@ export default function Customers() {
     { label: 'Lifetime Value', value: inrK(stats.ltv), Icon: IconRupee, cls: 'c-cus' },
     { label: 'Avg. Order Value', value: inr(stats.aov), Icon: IconBag, cls: 'c-stk' },
   ] : []
-  const chips = [{ k: 'all', l: 'All' }, { k: 'VIP', l: 'VIP' }, { k: 'Loyal', l: 'Loyal' }, { k: 'New', l: 'New' }]
+  const chips = [
+    { k: 'all', l: 'All' },
+    { k: 'VIP', l: 'VIP' },
+    { k: 'Loyal', l: 'Loyal' },
+    { k: 'New', l: 'New' },
+    { k: 'registered', l: 'Registered' },
+  ]
 
   return (
     <>
@@ -128,7 +145,11 @@ export default function Customers() {
                     <div className="cc-sub">{c.id}</div>
                   </div>
                 </div>
-                <span className={`badge ${segmentClass[c.segment] || 'grey'}`}>{c.segment}</span>
+                {c.source === 'registered' ? (
+                  <span className="badge grey" title="Signed up on the storefront, no orders yet">Registered</span>
+                ) : (
+                  <span className={`badge ${segmentClass[c.segment] || 'grey'}`}>{c.segment}</span>
+                )}
               </div>
 
               <div className="cc-info">
@@ -147,7 +168,7 @@ export default function Customers() {
 
               <div className="cc-actions">
                 <button className="btn btn-outline btn-sm" onClick={() => openEdit(c)}><IconPencil size={14} /> Edit</button>
-                <button className="icon-btn danger" title="Delete" onClick={() => setConfirm(c)}><IconTrash size={15} /></button>
+                <button className="icon-btn danger" title={c.source === 'registered' ? 'Remove storefront account' : 'Delete'} onClick={() => setConfirm(c)}><IconTrash size={15} /></button>
               </div>
             </div>
           ))}
@@ -159,7 +180,13 @@ export default function Customers() {
       {editing && (
         <Modal
           title={editing.id ? 'Edit Customer' : 'Add Customer'}
-          subtitle={editing.id ? editing.id : 'Add a new patron to your CRM'}
+          subtitle={
+            editing.id
+              ? editing.source === 'registered'
+                ? 'Storefront account — name, email and phone sync to their login'
+                : editing.id
+              : 'Add a new patron to your CRM'
+          }
           onClose={() => setEditing(null)}
           footer={
             <>
@@ -199,8 +226,12 @@ export default function Customers() {
 
       {confirm && (
         <ConfirmDialog
-          title="Delete customer"
-          message={`Delete "${confirm.name}" (${confirm.id})?`}
+          title={confirm.source === 'registered' ? 'Remove storefront account' : 'Delete customer'}
+          message={
+            confirm.source === 'registered'
+              ? `This will delete "${confirm.name}"'s storefront login. Any orders they placed will remain. Continue?`
+              : `Delete "${confirm.name}" (${confirm.id})?`
+          }
           onConfirm={doDelete}
           onClose={() => setConfirm(null)}
           busy={saving}
