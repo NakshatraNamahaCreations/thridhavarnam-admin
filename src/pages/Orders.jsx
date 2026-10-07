@@ -60,10 +60,23 @@ export default function Orders() {
 
   const filtered = useMemo(() => {
     if (!rows) return []
+    const needle = q.trim().toLowerCase()
     return rows.filter((o) => {
       if (statusFilter !== 'all' && o.status !== statusFilter) return false
-      if (q && !`${o.customer} ${o.product} ${o.id} ${o.city}`.toLowerCase().includes(q.toLowerCase())) return false
-      return true
+      if (!needle) return true
+      // Primary haystack — the fields visible in the table row.
+      const base = `${o.customer || ''} ${o.product || ''} ${o.id || ''} ${o.city || ''}`.toLowerCase()
+      if (base.includes(needle)) return true
+      // Secondary haystack — per-item SKU / productId / name. Lets the
+      // admin search by product code (eg. "SAR-0006" or just "0006") and
+      // land on the order that actually contains it, even when the
+      // flattened `product` summary only shows the first item + "+N more".
+      const items = Array.isArray(o.lineItems) ? o.lineItems : []
+      for (const it of items) {
+        const hay = `${it.productId || ''} ${it.sku || ''} ${it.name || ''}`.toLowerCase()
+        if (hay.includes(needle)) return true
+      }
+      return false
     })
   }, [rows, q, statusFilter])
 
