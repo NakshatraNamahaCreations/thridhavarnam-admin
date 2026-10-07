@@ -634,6 +634,58 @@ table.data .num { text-align: right; font-variant-numeric: tabular-nums; }
 }
 .topbar-bell:hover { background: var(--ink-50); color: var(--ink-700); }
 .bell-dot { position: absolute; top: 9px; right: 10px; width: 8px; height: 8px; border-radius: 50%; background: var(--maroon-600); border: 2px solid var(--surface); }
+
+/* Bell + enquiry notifications dropdown. The count badge replaces the
+   static dot once there's at least one new enquiry. */
+.topbar-notif { position: relative; display: inline-flex; }
+.bell-count {
+  position: absolute; top: -4px; right: -4px;
+  min-width: 18px; height: 18px; padding: 0 5px;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--maroon-700); color: #fff;
+  font-size: 10.5px; font-weight: 700; line-height: 1;
+  border-radius: 9999px; border: 2px solid var(--surface);
+  letter-spacing: 0.02em;
+}
+.notif-menu {
+  position: absolute; right: 0; top: 52px;
+  width: 320px; padding: 0; z-index: 50;
+  overflow: hidden;
+}
+.notif-head { padding: 14px 16px 10px; border-bottom: 1px solid var(--border); }
+.notif-head-t { font-size: 13.5px; font-weight: 700; color: var(--ink-900); }
+.notif-head-s { font-size: 11.5px; color: var(--ink-500); margin-top: 2px; }
+.notif-empty { padding: 22px 16px; font-size: 13px; color: var(--ink-500); text-align: center; }
+.notif-list { list-style: none; padding: 0; margin: 0; max-height: 340px; overflow-y: auto; }
+.notif-row {
+  display: flex; align-items: flex-start; gap: 10px;
+  width: 100%; padding: 11px 14px; border: none; background: none; text-align: left;
+  border-bottom: 1px solid var(--border); cursor: pointer;
+  transition: background 0.12s;
+}
+.notif-row:hover { background: var(--ink-50); }
+.notif-row:last-child { border-bottom: none; }
+.notif-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--maroon-600); margin-top: 6px; flex-shrink: 0;
+}
+.notif-row-body { flex: 1 1 auto; min-width: 0; }
+.notif-row-t {
+  font-size: 13px; font-weight: 600; color: var(--ink-900);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.notif-row-s {
+  font-size: 11.5px; color: var(--ink-500); margin-top: 2px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.notif-row-time { font-size: 11px; color: var(--ink-400); flex-shrink: 0; }
+.notif-foot {
+  display: block; width: 100%; padding: 10px 14px;
+  background: var(--ink-50); border: none; border-top: 1px solid var(--border);
+  color: var(--maroon-700); font-size: 12.5px; font-weight: 700;
+  text-align: center; cursor: pointer;
+}
+.notif-foot:hover { background: var(--maroon-50); }
 .topbar-account { position: relative; }
 .account-btn { display: flex; align-items: center; gap: 10px; background: none; border: none; padding: 4px 8px 4px 4px; border-radius: 0.75rem; }
 .account-btn:hover { background: var(--ink-50); }
@@ -1057,10 +1109,21 @@ table.data .num { text-align: right; font-variant-numeric: tabular-nums; }
 }
 .cust-card:hover { box-shadow: var(--shadow-soft); transform: translateY(-2px); }
 .cc-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
-.cc-id { display: flex; align-items: center; gap: 12px; }
-.cc-av { width: 46px; height: 46px; font-size: 15px; }
-.cc-name { font-size: 16px; font-weight: 700; color: var(--ink-900); }
-.cc-sub { font-size: 12px; color: var(--ink-400); }
+/* min-width: 0 lets the identity block shrink below its intrinsic width so
+   the Registered chip stays pinned to the top-right instead of being pushed
+   off the edge by a long USR-xxx id. */
+.cc-id { display: flex; align-items: center; gap: 12px; flex: 1 1 auto; min-width: 0; }
+.cc-id > div:last-child { min-width: 0; flex: 1 1 auto; }
+.cc-av { width: 46px; height: 46px; font-size: 15px; flex-shrink: 0; }
+.cc-name {
+  font-size: 16px; font-weight: 700; color: var(--ink-900);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.cc-sub {
+  font-size: 12px; color: var(--ink-400);
+  overflow-wrap: anywhere;
+}
+.cust-card .cc-top > .badge { flex-shrink: 0; align-self: flex-start; }
 .cc-info { margin-top: 16px; padding-top: 4px; display: flex; flex-direction: column; gap: 9px; }
 .cc-row { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--ink-600); }
 .cc-row svg { color: var(--maroon-500); flex-shrink: 0; }

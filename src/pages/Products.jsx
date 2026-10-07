@@ -8,6 +8,7 @@ import Modal from '../components/Modal'
 import ConfirmDialog from '../components/ConfirmDialog'
 import Pagination from '../components/Pagination'
 import ColorSelect from '../components/ColorSelect'
+import ProductDetailsView from '../components/ProductDetailsView'
 import { IconLayers, IconPlus, IconSearch, IconStar, IconPencil, IconTrash, IconUpload, IconDownload } from '../components/icons'
 
 const EMPTY = {
@@ -58,6 +59,10 @@ export default function Products() {
   // Edit flow asks for a confirmation before overwriting an existing
   // product. New-saree creation skips this — nothing to accidentally lose.
   const [confirmSave, setConfirmSave] = useState(false)
+  // Read-only "View details" modal — opened by clicking the card body.
+  // Separate from `editing` so admins can inspect without accidentally
+  // entering edit mode or triggering the save-confirmation flow.
+  const [viewing, setViewing] = useState(null)
 
   // Bulk-add modal state. `csv` holds the raw pasted / uploaded text;
   // `parsed` is the derived table shown in the preview. Kept separate
@@ -152,31 +157,60 @@ export default function Products() {
   }
 
   function openNew() { setForm(EMPTY); setEditing({}) }
-  function openEdit(p) {
-    // Normalise legacy shapes into the new {url, color} object form so the
-    // gallery UI stays consistent regardless of what the backend returned.
-    const raw = Array.isArray(p.images) ? p.images.filter(Boolean) : []
+  // Hydrate the form from the `full` product record. Pulled out so the
+  // list-row shim and the fresh-fetch path share identical shaping logic.
+  function hydrateForm(full) {
+    const raw = Array.isArray(full.images) ? full.images.filter(Boolean) : []
     let images = raw.map((entry) =>
       typeof entry === 'string'
         ? { url: entry, color: '' }
         : { url: entry.url || '', color: entry.color || '' },
     )
-    if (!images.length && p.image && p.image !== '🥻') {
-      images = [{ url: p.image, color: p.color || '' }]
+    if (!images.length && full.image && full.image !== '🥻') {
+      images = [{ url: full.image, color: full.color || '' }]
     }
     setForm({
       ...EMPTY,
-      ...p,
-      price: p.price ?? '',
-      mrp: p.mrp ?? '',
-      stock: p.stock ?? '',
-      badges: Array.isArray(p.badges) ? p.badges.filter((b) => BADGES.some((x) => x.key === b)) : [],
-      flags: Array.isArray(p.flags) ? p.flags.filter((f) => FLAGS.some((x) => x.key === f)) : [],
+      ...full,
+      price: full.price ?? '',
+      mrp: full.mrp ?? '',
+      stock: full.stock ?? '',
+      badges: Array.isArray(full.badges) ? full.badges.filter((b) => BADGES.some((x) => x.key === b)) : [],
+      flags: Array.isArray(full.flags) ? full.flags.filter((f) => FLAGS.some((x) => x.key === f)) : [],
       images,
-      image: images[0]?.url || p.image || '🥻',
-      faqs: Array.isArray(p.faqs) ? p.faqs.map((f) => ({ q: f.q || '', a: f.a || '' })) : [],
+      image: images[0]?.url || full.image || '🥻',
+      faqs: Array.isArray(full.faqs) ? full.faqs.map((f) => ({ q: f.q || '', a: f.a || '' })) : [],
     })
+  }
+  function openEdit(p) {
+    // List rows strip heavy accordion fields (description / styleTips /
+    // fitTips / shippingReturns / faqs) — if we populate the form from the
+    // list row and save, those fields get overwritten with the EMPTY ''
+    // defaults, silently destroying stored data. Fetch the full record
+    // first; the row is used only as an optimistic placeholder.
+    hydrateForm(p)
     setEditing(p)
+    api.get(p.id)
+      .then((full) => {
+        if (!full) return
+        hydrateForm(full)
+        // Keep the subtitle id stable; nothing user-visible to update here.
+        setEditing((cur) => (cur && cur.id === full.id ? { ...cur, ...full } : cur))
+      })
+      .catch(() => {})
+  }
+
+  // Same list-vs-detail gap as openEdit: the card click opens the view with
+  // the partial row, then upgrades to the full record so description /
+  // story / FAQs etc. actually render.
+  function openView(p) {
+    setViewing(p)
+    api.get(p.id)
+      .then((full) => {
+        if (!full) return
+        setViewing((cur) => (cur && cur.id === full.id ? { ...cur, ...full } : cur))
+      })
+      .catch(() => {})
   }
 
   function onSaveClick(e) {
@@ -393,7 +427,16 @@ export default function Products() {
         <>
           <div className="prod-grid">
           {paged.map((p) => (
-            <div className="prod-card" key={p.id}>
+            <div
+              className="prod-card"
+              key={p.id}
+              role="button"
+              tabIndex={0}
+              style={{ cursor: 'pointer' }}
+              onClick={() => openView(p)}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openView(p) } }}
+              title="View details"
+            >
               <div className="pc-media">
                 <span className="pc-sku">{p.id}</span>
                 <span className={`badge ${productStatusClass[p.status] || 'grey'} pc-status`}>{productStatusLabel[p.status] || p.status}</span>
@@ -419,8 +462,8 @@ export default function Products() {
                   </div>
                 </div>
                 <div className="pc-actions">
-                  <button className="btn btn-outline pc-edit" onClick={() => openEdit(p)}><IconPencil size={15} /> Edit</button>
-                  <button className="icon-btn danger" title="Delete" onClick={() => setConfirm(p)}><IconTrash size={16} /></button>
+                  <button className="btn btn-outline pc-edit" onClick={(e) => { e.stopPropagation(); openEdit(p) }}><IconPencil size={15} /> Edit</button>
+                  <button className="icon-btn danger" title="Delete" onClick={(e) => { e.stopPropagation(); setConfirm(p) }}><IconTrash size={16} /></button>
                 </div>
               </div>
             </div>
@@ -727,6 +770,28 @@ export default function Products() {
         </Modal>
       )}
 
+      {viewing && (
+        <Modal
+          title={viewing.name || 'Saree details'}
+          subtitle={viewing.id}
+          onClose={() => setViewing(null)}
+          wide
+          footer={
+            <>
+              <button className="btn btn-outline" onClick={() => setViewing(null)}>Close</button>
+              <button
+                className="btn btn-primary"
+                onClick={() => { const p = viewing; setViewing(null); openEdit(p) }}
+              >
+                <IconPencil size={15} /> Edit this saree
+              </button>
+            </>
+          }
+        >
+          <ProductDetailsView p={viewing} />
+        </Modal>
+      )}
+
       {confirm && (
         <ConfirmDialog
           title="Delete product"
@@ -937,3 +1002,4 @@ export default function Products() {
     </>
   )
 }
+

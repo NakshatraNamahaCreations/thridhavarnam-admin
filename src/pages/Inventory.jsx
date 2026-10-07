@@ -5,6 +5,7 @@ import { useToast } from '../context/ToastContext'
 import Modal from '../components/Modal'
 import ConfirmDialog from '../components/ConfirmDialog'
 import Pagination from '../components/Pagination'
+import ProductDetailsView from '../components/ProductDetailsView'
 import { IconBox, IconAlert, IconBoxX, IconRupee, IconRefresh, IconSearch } from '../components/icons'
 
 const LOW = 5
@@ -20,6 +21,8 @@ export default function Inventory() {
   // Row-level +N quick action — holds { product, amount } while the
   // confirmation dialog is open, cleared on confirm or cancel.
   const [quickConfirm, setQuickConfirm] = useState(null)
+  // Read-only product details popup — opened by clicking a table row.
+  const [viewing, setViewing] = useState(null)
   const [page, setPage] = useState(1)
   const [q, setQ] = useState('')
   const [catFilter, setCatFilter] = useState('all')
@@ -185,7 +188,12 @@ export default function Inventory() {
                   const pct = Math.min(Math.round(((p.stock || 0) / stats.max) * 100), 100)
                   const level = p.stock === 0 ? 'red' : p.stock <= LOW ? 'amber' : p.stock <= 15 ? 'blue' : 'green'
                   return (
-                    <tr key={p.id}>
+                    <tr
+                      key={p.id}
+                      style={{ cursor: 'pointer' }}
+                      onClick={() => setViewing(p)}
+                      title="View saree details"
+                    >
                       <td className="mono-sku">{p.id}</td>
                       <td style={{ fontWeight: 600, color: 'var(--ink-900)' }}>{p.name}</td>
                       <td>{titleCase(p.category)}</td>
@@ -201,7 +209,12 @@ export default function Inventory() {
                             : <span className="badge green">Active</span>}
                       </td>
                       <td className="num">
-                        <button className="restock-link" onClick={() => setQuickConfirm({ product: p, amount: 10 })}>+10</button>
+                        <button
+                          className="restock-link"
+                          onClick={(e) => { e.stopPropagation(); setQuickConfirm({ product: p, amount: 10 }) }}
+                        >
+                          +10
+                        </button>
                       </td>
                     </tr>
                   )
@@ -212,6 +225,20 @@ export default function Inventory() {
           </div>
         )}
       </div>
+
+      {viewing && (
+        <Modal
+          title={viewing.name || 'Saree details'}
+          subtitle={viewing.id}
+          onClose={() => setViewing(null)}
+          wide
+          footer={
+            <button className="btn btn-outline" onClick={() => setViewing(null)}>Close</button>
+          }
+        >
+          <ProductDetailsView p={viewing} />
+        </Modal>
+      )}
 
       {quickConfirm && (
         <ConfirmDialog

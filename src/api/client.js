@@ -5,9 +5,9 @@
 // Render is commented out for now — its deployed build lags the local one.
 const BASE =
   import.meta.env.VITE_API_URL ||
-  // (import.meta.env.PROD ? 'http://localhost:5000/api' : '/api')
+  (import.meta.env.PROD ? 'http://localhost:5000/api' : '/api')
   // (import.meta.env.PROD ? 'https://sareeebackend.onrender.com/api' : '/api')
-  (import.meta.env.PROD ? 'https://api.thridhavarnam.com/api' : '/api')
+  // (import.meta.env.PROD ? 'https://api.thridhavarnam.com/api' : '/api')
 const TOKEN_KEY = 'thv_token'
 
 export const getToken = () => localStorage.getItem(TOKEN_KEY)
@@ -64,6 +64,11 @@ const enc = (id) => encodeURIComponent(id)
 
 export const products = {
   list: () => api.get('/products'),
+  // The list endpoint drops heavy accordion fields (description, styleTips,
+  // fitTips, shippingReturns, faqs) for perf. Always use `get(id)` before
+  // editing so the form hydrates with the full record and doesn't nullify
+  // those fields on save.
+  get: (id) => api.get(`/products/${enc(id)}`),
   create: (d) => api.post('/products', d),
   bulk: (items) => api.post('/products/bulk', { items }),
   update: (id, d) => api.put(`/products/${enc(id)}`, d),
