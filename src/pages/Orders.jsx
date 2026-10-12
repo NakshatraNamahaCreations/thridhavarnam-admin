@@ -4,29 +4,21 @@ import { inr, fmtDate, orderStatusClass, payStatusClass, titleCase } from '../li
 import { useToast } from '../context/ToastContext'
 import Modal from '../components/Modal'
 import ConfirmDialog from '../components/ConfirmDialog'
+import Pagination from '../components/Pagination'
 
 const STATUSES = ['pending', 'processing', 'shipped', 'delivered', 'cancelled']
-// Linear fulfilment path. Status can only move forward along this chain,
-// never backward. `cancelled` is an escape hatch available from any
-// non-terminal state. Both `delivered` and `cancelled` are terminal —
-// once set the dropdown is locked.
-const STATUS_FLOW = ['pending', 'processing', 'shipped', 'delivered']
-const TERMINAL = new Set(['delivered', 'cancelled'])
 const PAYSTATES = ['pending', 'paid', 'refunded']
 const EMPTY = { customer: '', city: '', product: '', items: '1', amount: '', status: 'pending', payment: 'pending' }
 
-// A candidate status is selectable iff it strictly moves the order forward
-// along STATUS_FLOW, OR it's `cancelled` (any pre-terminal state → cancelled
-// is allowed). Terminal states accept nothing. The current status itself is
-// not re-selectable — no point confirming a no-op change.
-function canSelectStatus(current, candidate) {
-  if (TERMINAL.has(current)) return false
-  if (candidate === current) return false
-  if (candidate === 'cancelled') return true
-  const ci = STATUS_FLOW.indexOf(current)
-  const ni = STATUS_FLOW.indexOf(candidate)
-  return ci >= 0 && ni > ci
-}
+// How often we re-poll the batched tracking endpoint. 60s matches the
+// server-side Shiprocket cache TTL, so a poll cycle that lands just
+// after an entry expires picks up fresh data; one that lands inside
+// the TTL hits the cache and is cheap.
+const TRACKING_POLL_MS = 60_000
+
+// Rows per page. Ten keeps the viewport uncluttered without burying
+// pagination controls below the fold on common laptop heights.
+const PAGE_SIZE = 10
 
 export default function Orders() {
   const toast = useToast()
@@ -40,9 +32,17 @@ export default function Orders() {
   const [form, setForm] = useState(EMPTY)
   const [saving, setSaving] = useState(false)
   const [confirm, setConfirm] = useState(null)
-  // Pending status change — holds { order, next } between the user picking
-  // a new status in the dropdown and confirming / cancelling the change.
-  const [statusChange, setStatusChange] = useState(null)
+  // Holds the order the admin has clicked "Cancel order" on — triggers
+  // the confirm dialog + the backend PUT that also hits Shiprocket's
+  // cancel API via the controller.
+  const [cancelOrder, setCancelOrder] = useState(null)
+  // Live Shiprocket statuses keyed by order id. Populated by the
+  // /orders/tracking poller — orders not in this map (admin-created,
+  // Shiprocket push failed, upstream errored) just keep showing their
+  // internal status.
+  const [tracking, setTracking] = useState({})
+  const [trackingLoading, setTrackingLoading] = useState(false)
+  const [page, setPage] = useState(1)
 
   const load = () => api.list().then(setRows).catch((e) => toast.bad(e.message))
   useEffect(() => {
@@ -51,18 +51,63 @@ export default function Orders() {
     prodApi.list().then(setProds).catch(() => {})
   }, [])
 
+  // Poll Shiprocket-backed tracking for every visible order. We don't
+  // pass an ids filter — the backend already scopes to orders with a
+  // shipment and the response is small. First fetch marks loading so
+  // the badges show a spinner on initial paint; subsequent polls run
+  // silently in the background.
+  useEffect(() => {
+    let cancelled = false
+    let first = true
+
+    const pull = async () => {
+      if (first) setTrackingLoading(true)
+      try {
+        const data = await api.tracking()
+        if (!cancelled) setTracking(data?.tracking || {})
+      } catch (e) {
+        // Non-fatal — the row keeps showing the stored internal status.
+        console.warn('[orders] tracking fetch failed', e?.message || e)
+      } finally {
+        if (first && !cancelled) setTrackingLoading(false)
+        first = false
+      }
+    }
+
+    pull()
+    const t = setInterval(pull, TRACKING_POLL_MS)
+    return () => {
+      cancelled = true
+      clearInterval(t)
+    }
+  }, [])
+
+  // Pick the effective status for an order — the live Shiprocket entry
+  // if we've got one, otherwise the stored internal field. Everything
+  // downstream (chip counts, filter, row badge) consumes this so the
+  // table, the tab counters, and the badge all agree on reality.
+  const effectiveStatus = (o) => {
+    const t = tracking[o.id]
+    if (t?.internalStatus) return t.internalStatus
+    return o.status || 'pending'
+  }
+
   const counts = useMemo(() => {
     const c = { all: rows?.length || 0 }
     STATUSES.forEach((s) => (c[s] = 0))
-    rows?.forEach((o) => (c[o.status] = (c[o.status] || 0) + 1))
+    rows?.forEach((o) => {
+      const s = effectiveStatus(o)
+      c[s] = (c[s] || 0) + 1
+    })
     return c
-  }, [rows])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rows, tracking])
 
   const filtered = useMemo(() => {
     if (!rows) return []
     const needle = q.trim().toLowerCase()
     return rows.filter((o) => {
-      if (statusFilter !== 'all' && o.status !== statusFilter) return false
+      if (statusFilter !== 'all' && effectiveStatus(o) !== statusFilter) return false
       if (!needle) return true
       // Primary haystack — the fields visible in the table row.
       const base = `${o.customer || ''} ${o.product || ''} ${o.id || ''} ${o.city || ''}`.toLowerCase()
@@ -78,7 +123,25 @@ export default function Orders() {
       }
       return false
     })
-  }, [rows, q, statusFilter])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rows, q, statusFilter, tracking])
+
+  // Reset to page 1 whenever the user narrows the result set — otherwise
+  // changing the filter while on page 5 can leave the table empty.
+  useEffect(() => { setPage(1) }, [q, statusFilter])
+
+  // If a mutation (delete, status change) shrinks the result set below
+  // the current page's window, back off one page so we're not stranded
+  // on an empty view.
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
+  useEffect(() => {
+    if (page > totalPages) setPage(totalPages)
+  }, [page, totalPages])
+
+  const paged = useMemo(
+    () => filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE),
+    [filtered, page],
+  )
 
   function openNew() { setForm(EMPTY); setEditing({}) }
   function openEdit(o) {
@@ -116,23 +179,54 @@ export default function Orders() {
     catch (e) { toast.bad(e.message) } finally { setSaving(false) }
   }
 
-  function requestStatusChange(o, next) {
-    if (!canSelectStatus(o.status, next)) return
-    setStatusChange({ order: o, next })
-  }
-
-  async function applyStatusChange() {
-    if (!statusChange) return
+  async function doCancelOrder() {
+    if (!cancelOrder) return
     setSaving(true)
     try {
-      await api.update(statusChange.order.id, { status: statusChange.next })
-      toast.ok(`Status updated to ${titleCase(statusChange.next)}`)
-      setStatusChange(null)
+      await api.update(cancelOrder.id, { status: 'cancelled' })
+      toast.ok(`Order ${cancelOrder.id} cancelled`)
+      setCancelOrder(null)
+      // Close the edit modal if it was the one open — we don't want
+      // the admin left looking at a stale "cancel this order" strip.
+      if (editing && editing.id === cancelOrder.id) setEditing(null)
       load()
-    } catch (e) { toast.bad(e.message) } finally { setSaving(false) }
+    } catch (e) {
+      toast.bad(e.message)
+    } finally {
+      setSaving(false)
+    }
   }
 
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }))
+
+  // Shape consumed by the row badge renderer below. Reuses
+  // `effectiveStatus` so chip counts / filter / badge all agree.
+  function resolveRowStatus(o) {
+    const t = tracking[o.id]
+    const internal = effectiveStatus(o)
+    if (t) {
+      // Guard against bare numeric statuses leaking through — those
+      // are Shiprocket-internal `shipment_status` codes and would
+      // render as a meaningless digit ("8", "26"). Fall back to the
+      // mapped internal label when we see one.
+      const raw = (t.currentStatus || '').trim()
+      const isNumericCode = /^\d+$/.test(raw)
+      return {
+        text: raw && !isNumericCode ? raw : titleCase(internal),
+        internal,
+        source: t.source || 'shiprocket',
+        courier: t.courier || '',
+        awb: t.awbCode || '',
+      }
+    }
+    return {
+      text: titleCase(internal),
+      internal,
+      source: 'internal',
+      courier: o?.shiprocket?.courier || '',
+      awb: o?.shiprocket?.awbCode || '',
+    }
+  }
 
   return (
     <>
@@ -165,7 +259,7 @@ export default function Orders() {
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((o) => (
+                {paged.map((o) => (
                   <tr key={o.id}>
                     <td><div style={{ fontWeight: 700 }}>{o.id}</div><div className="p-sub">{fmtDate(o.date)}</div></td>
                     <td>
@@ -179,20 +273,44 @@ export default function Orders() {
                     <td className="num" style={{ fontWeight: 700 }}>{inr(o.amount)}</td>
                     <td><span className={`badge ${payStatusClass[o.payment] || 'grey'}`}>{titleCase(o.payment)}</span></td>
                     <td>
-                      <select
-                        className="select"
-                        style={{ padding: '5px 8px', fontSize: 12.5 }}
-                        value={o.status}
-                        disabled={TERMINAL.has(o.status)}
-                        title={TERMINAL.has(o.status) ? `Order is ${titleCase(o.status)} — status is locked` : 'Change order status'}
-                        onChange={(e) => requestStatusChange(o, e.target.value)}
-                      >
-                        {STATUSES.map((s) => (
-                          <option key={s} value={s} disabled={s !== o.status && !canSelectStatus(o.status, s)}>
-                            {titleCase(s)}
-                          </option>
-                        ))}
-                      </select>
+                      {(() => {
+                        const r = resolveRowStatus(o)
+                        const live = r.source === 'shiprocket'
+                        const title = live
+                          ? `Live Shiprocket status${r.courier ? ` · ${r.courier}` : ''}${r.awb ? ` · AWB ${r.awb}` : ''}`
+                          : trackingLoading
+                            ? 'Fetching live status…'
+                            : 'No Shiprocket shipment yet — showing internal status'
+                        return (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                            <span
+                              className={`badge ${orderStatusClass[r.internal] || 'grey'}`}
+                              title={title}
+                              style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                            >
+                              {live && (
+                                <span
+                                  aria-hidden
+                                  title="Live from Shiprocket"
+                                  style={{
+                                    width: 6,
+                                    height: 6,
+                                    borderRadius: '50%',
+                                    background: '#22c55e',
+                                    boxShadow: '0 0 0 2px rgba(34,197,94,0.2)',
+                                  }}
+                                />
+                              )}
+                              {r.text}
+                            </span>
+                            {(r.courier || r.awb) && (
+                              <span className="p-sub" style={{ fontSize: 11, fontFamily: 'monospace' }}>
+                                {r.courier}{r.courier && r.awb ? ' · ' : ''}{r.awb}
+                              </span>
+                            )}
+                          </div>
+                        )
+                      })()}
                     </td>
                     <td>
                       <div className="cell-actions">
@@ -204,6 +322,12 @@ export default function Orders() {
                 ))}
               </tbody>
             </table>
+            <Pagination
+              page={page}
+              pageSize={PAGE_SIZE}
+              total={filtered.length}
+              onChange={setPage}
+            />
           </div>
         )}
       </div>
@@ -244,12 +368,6 @@ export default function Orders() {
               <input type="number" value={form.amount} onChange={set('amount')} placeholder="18999" />
             </div>
             <div className="field">
-              <label>Order status</label>
-              <select value={form.status} onChange={set('status')}>
-                {STATUSES.map((s) => <option key={s} value={s}>{titleCase(s)}</option>)}
-              </select>
-            </div>
-            <div className="field">
               <label>Payment</label>
               <select value={form.payment} onChange={set('payment')}>
                 {PAYSTATES.map((s) => <option key={s} value={s}>{titleCase(s)}</option>)}
@@ -260,6 +378,35 @@ export default function Orders() {
             <p style={{ fontSize: 12.5, color: 'var(--ink-soft)', marginTop: 6 }}>
               A matching entry is automatically added to the Payments ledger.
             </p>
+          )}
+          {editing.id && editing.status !== 'cancelled' && (
+            <div
+              style={{
+                marginTop: 16,
+                paddingTop: 16,
+                borderTop: '1px solid var(--line, #eee)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 12,
+                flexWrap: 'wrap',
+              }}
+            >
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <div style={{ fontWeight: 600, fontSize: 13.5 }}>Cancel this order</div>
+                <div style={{ fontSize: 12, color: 'var(--ink-soft)', marginTop: 2 }}>
+                  Restores stock and cancels the Shiprocket shipment. This can&apos;t be undone.
+                </div>
+              </div>
+              <button
+                type="button"
+                className="btn btn-danger"
+                onClick={() => setCancelOrder(editing)}
+                disabled={saving}
+              >
+                Cancel order
+              </button>
+            </div>
           )}
         </Modal>
       )}
@@ -274,18 +421,19 @@ export default function Orders() {
         />
       )}
 
-      {statusChange && (
+      {cancelOrder && (
         <ConfirmDialog
-          title="Change order status"
-          message={`Are you sure you want to change the order status of ${statusChange.order.id} from ${titleCase(statusChange.order.status)} to ${titleCase(statusChange.next)}? This cannot be undone — ${titleCase(statusChange.next)} is ${TERMINAL.has(statusChange.next) ? 'a final state and will lock further changes' : 'later in the fulfilment flow, so you will not be able to move back to earlier statuses'}.`}
-          confirmLabel={saving ? 'Updating…' : `Yes, set ${titleCase(statusChange.next)}`}
-          cancelLabel="No, cancel"
-          tone={statusChange.next === 'cancelled' ? 'danger' : 'primary'}
-          onConfirm={applyStatusChange}
-          onClose={() => setStatusChange(null)}
+          title="Cancel order"
+          message={`Cancel order ${cancelOrder.id} for ${cancelOrder.customer}? Stock will be restored and the Shiprocket shipment will be cancelled.`}
+          confirmLabel={saving ? 'Cancelling…' : 'Yes, cancel order'}
+          cancelLabel="No, keep it"
+          tone="danger"
+          onConfirm={doCancelOrder}
+          onClose={() => setCancelOrder(null)}
           busy={saving}
         />
       )}
+
     </>
   )
 }

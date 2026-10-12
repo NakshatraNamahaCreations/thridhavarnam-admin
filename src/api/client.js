@@ -140,6 +140,15 @@ export const orders = {
   create: (d) => api.post('/orders', d),
   update: (id, d) => api.put(`/orders/${enc(id)}`, d),
   remove: (id) => api.del(`/orders/${enc(id)}`),
+  // Live Shiprocket statuses for the admin orders table. Optional ids
+  // filter is a plain array of order ids; omit it to pull every order
+  // with a Shiprocket shipment attached. Response: { tracking: {...} }.
+  tracking: (ids) => {
+    const q = Array.isArray(ids) && ids.length
+      ? `?ids=${ids.map((id) => enc(id)).join(',')}`
+      : ''
+    return api.get(`/orders/tracking${q}`)
+  },
 }
 export const payments = {
   list: () => api.get('/payments'),
