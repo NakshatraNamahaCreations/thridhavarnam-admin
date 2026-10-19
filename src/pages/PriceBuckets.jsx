@@ -14,24 +14,12 @@ const EMPTY = {
   label: '',
   subtitle: '',
   image: '',
-  href: '/shop',
+  minPrice: '',
+  maxPrice: '',
   startingPrice: '',
   order: 0,
   active: true,
 }
-
-// Suggestions matching PRICE_BRACKETS on the storefront FilterRail. The
-// admin can free-text any URL, but these cover the common cases.
-const HREF_SUGGESTIONS = [
-  '/shop?bracket=under-5k',
-  '/shop?bracket=5-15k',
-  '/shop?bracket=15-30k',
-  '/shop?bracket=30-60k',
-  '/shop?bracket=above-60k',
-  '/shop?tier=bridal',
-  '/shop?tier=festive',
-  '/shop?tier=everyday',
-]
 
 export default function PriceBuckets() {
   const toast = useToast()
@@ -57,7 +45,8 @@ export default function PriceBuckets() {
       label: b.label || '',
       subtitle: b.subtitle || '',
       image: b.image || '',
-      href: b.href || '/shop',
+      minPrice: b.minPrice ? String(b.minPrice) : '',
+      maxPrice: b.maxPrice ? String(b.maxPrice) : '',
       startingPrice: b.startingPrice ? String(b.startingPrice) : '',
       order: Number(b.order) || 0,
       active: b.active !== false,
@@ -90,7 +79,8 @@ export default function PriceBuckets() {
         label: form.label.trim(),
         subtitle: form.subtitle.trim(),
         image: form.image,
-        href: form.href.trim() || '/shop',
+        minPrice: Number(form.minPrice) || 0,
+        maxPrice: Number(form.maxPrice) || 0,
         startingPrice: Number(form.startingPrice) || 0,
         order: Number(form.order) || 0,
         active: !!form.active,
@@ -275,20 +265,29 @@ export default function PriceBuckets() {
               </div>
             </div>
 
-            <div className="field full" style={{ marginBottom: 14 }}>
-              <label>Link (href)</label>
-              <input
-                list="href-suggestions"
-                value={form.href}
-                onChange={(e) => setForm((f) => ({ ...f, href: e.target.value }))}
-                placeholder="/shop?bracket=under-5k"
-              />
-              <datalist id="href-suggestions">
-                {HREF_SUGGESTIONS.map((h) => (
-                  <option key={h} value={h} />
-                ))}
-              </datalist>
-              <span className="img-hint">Where the tile links. Storefront supports ?bracket=&lt;id&gt;, ?tier=&lt;id&gt;, ?weave=&lt;name&gt;, ?occasion=&lt;name&gt;.</span>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
+              <div className="field">
+                <label>Min price (₹)</label>
+                <input
+                  type="number"
+                  min="0"
+                  value={form.minPrice}
+                  onChange={(e) => setForm((f) => ({ ...f, minPrice: e.target.value }))}
+                  placeholder="0"
+                />
+                <span className="img-hint">Leave blank or 0 for no lower limit.</span>
+              </div>
+              <div className="field">
+                <label>Max price (₹)</label>
+                <input
+                  type="number"
+                  min="0"
+                  value={form.maxPrice}
+                  onChange={(e) => setForm((f) => ({ ...f, maxPrice: e.target.value }))}
+                  placeholder="5000"
+                />
+                <span className="img-hint">Leave blank or 0 for no upper limit.</span>
+              </div>
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
