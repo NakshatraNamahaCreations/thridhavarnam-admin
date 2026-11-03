@@ -51,36 +51,13 @@ export default function Orders() {
     prodApi.list().then(setProds).catch(() => {})
   }, [])
 
-  // Poll Shiprocket-backed tracking for every visible order. We don't
-  // pass an ids filter — the backend already scopes to orders with a
-  // shipment and the response is small. First fetch marks loading so
-  // the badges show a spinner on initial paint; subsequent polls run
-  // silently in the background.
-  useEffect(() => {
-    let cancelled = false
-    let first = true
-
-    const pull = async () => {
-      if (first) setTrackingLoading(true)
-      try {
-        const data = await api.tracking()
-        if (!cancelled) setTracking(data?.tracking || {})
-      } catch (e) {
-        // Non-fatal — the row keeps showing the stored internal status.
-        console.warn('[orders] tracking fetch failed', e?.message || e)
-      } finally {
-        if (first && !cancelled) setTrackingLoading(false)
-        first = false
-      }
-    }
-
-    pull()
-    const t = setInterval(pull, TRACKING_POLL_MS)
-    return () => {
-      cancelled = true
-      clearInterval(t)
-    }
-  }, [])
+  // Poll Shiprocket-backed tracking for the currently-visible page only.
+  // Fanning out to every non-terminal order in the DB (hundreds for a
+  // mature store) burns the Shiprocket rate limit on every poll and
+  // delivers status for orders the admin can't even see. Scoping to
+  // paged ids caps each poll at ~PAGE_SIZE Shiprocket calls regardless
+  // of DB size. The tracking map accumulates across pages via a merge
+  // so flipping back doesn't flash out the badges.
 
   // Pick the effective status for an order — the live Shiprocket entry
   // if we've got one, otherwise the stored internal field. Everything
@@ -142,6 +119,43 @@ export default function Orders() {
     () => filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE),
     [filtered, page],
   )
+
+  // Comma-joined ids of the currently-visible page. Used as the effect
+  // key so a page change triggers a fresh pull instead of waiting out
+  // the 60s interval. Empty when rows haven't loaded yet.
+  const pagedIdsKey = paged.map((o) => o.id).join(',')
+
+  useEffect(() => {
+    if (!pagedIdsKey) return
+    const ids = pagedIdsKey.split(',')
+    let cancelled = false
+    let first = true
+
+    const pull = async () => {
+      if (first) setTrackingLoading(true)
+      try {
+        const data = await api.tracking(ids)
+        if (!cancelled) {
+          // Merge rather than replace so flipping between pages doesn't
+          // flash out previously-fetched badges while the new page is
+          // in flight.
+          setTracking((prev) => ({ ...prev, ...(data?.tracking || {}) }))
+        }
+      } catch (e) {
+        console.warn('[orders] tracking fetch failed', e?.message || e)
+      } finally {
+        if (first && !cancelled) setTrackingLoading(false)
+        first = false
+      }
+    }
+
+    pull()
+    const t = setInterval(pull, TRACKING_POLL_MS)
+    return () => {
+      cancelled = true
+      clearInterval(t)
+    }
+  }, [pagedIdsKey])
 
   function openNew() { setForm(EMPTY); setEditing({}) }
   function openEdit(o) {
